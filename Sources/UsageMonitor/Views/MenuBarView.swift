@@ -106,13 +106,6 @@ struct MenuBarView: View {
                     .font(.caption)
                     .foregroundColor(snapshot.isValid ? .green : .red)
             }
-            HStack {
-                Text("模式 \(snapshot.mode)")
-                Text("单位 \(snapshot.unit)")
-                Text("剩余 \(UsageFormatters.balanceText(snapshot.remaining))")
-            }
-            .font(.caption)
-            .foregroundColor(.secondary)
         }
     }
 

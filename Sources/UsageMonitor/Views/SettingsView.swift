@@ -53,6 +53,15 @@ struct SettingsView: View {
                 }
                 .disabled(monitor.isRefreshing)
             }
+
+            Section("关于") {
+                HStack {
+                    Text("版本")
+                    Spacer()
+                    Text(Self.versionText)
+                        .foregroundColor(.secondary)
+                }
+            }
         }
         .padding(20)
         .frame(width: 420)
@@ -74,5 +83,11 @@ struct SettingsView: View {
 
     private func commitDraft() {
         draft.commit(to: monitor)
+    }
+
+    private static var versionText: String {
+        let bundleVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        let version = bundleVersion.flatMap { $0.isEmpty ? nil : $0 } ?? "0.0.1"
+        return version.hasPrefix("v") ? version : "v\(version)"
     }
 }
