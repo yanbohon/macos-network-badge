@@ -24,6 +24,7 @@ let package = Package(
             path: "Sources/UsageMonitor",
             linkerSettings: [
                 .linkedFramework("Security"),
+                .linkedFramework("WebKit"),
             ]
         ),
 

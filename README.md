@@ -27,6 +27,8 @@ swift run UsageMonitor
 
 Open settings from the menu bar, enter the sub2api root URL, email, and password, then click `登录/验证`.
 
+If the instance requires Cloudflare Turnstile, enter the Base URL and click `网页登录`. The app opens the real sub2api site in a `WKWebView`, lets the page complete Turnstile normally, captures the successful `/api/v1/auth/login` response when available, and stores the resulting token in Keychain.
+
 ## Configuration
 
 The Base URL must start with `http://` or `https://` and should be the instance root only. The app removes trailing slashes before saving and always builds API paths as:
@@ -64,17 +66,21 @@ Sources/UsageMonitor/
 ├── Models/Sub2APIModels.swift
 ├── Services/Sub2APIClient.swift
 ├── Services/KeychainStore.swift
+├── Services/WebLoginTokenExtractor.swift
 ├── Monitors/SubscriptionMonitor.swift
 ├── Formatters/UsageFormatters.swift
 └── Views/
     ├── MenuBarView.swift
     ├── SettingsView.swift
-    └── SettingsWindowController.swift
+    ├── SettingsWindowController.swift
+    └── WebLoginWindowController.swift
 
 Tests/UsageMonitorTests/
 ├── Sub2APIClientTests.swift
 ├── Sub2APIModelsTests.swift
-└── UsageFormattersTests.swift
+├── SubscriptionMonitorTests.swift
+├── UsageFormattersTests.swift
+└── WebLoginTokenExtractorTests.swift
 ```
 
 ## License

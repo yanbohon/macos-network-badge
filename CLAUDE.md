@@ -31,11 +31,13 @@ No test should call a real sub2api service. Use the injectable `Sub2APIRequestLo
 - `Sub2APIModels` — login/subscription Codable DTOs and normalized catalog helpers
 - `Sub2APIClient` — login/subscriptions requests, envelope decoding, HTTP/API error mapping
 - `KeychainStore` — Security framework wrapper for password/token storage
+- `WebLoginTokenExtractor` — extracts captured web login tokens from WebKit storage/cookies
 - `SubscriptionMonitor` — `ObservableObject` owning config, auth, refresh, selected subscription, cached data, and timer state
 - `UsageFormatters` — currency, daily usage, remaining quota, percentage, expiry, and quota health formatting
 - `MenuBarView` — popover UI
 - `SettingsView` — Base URL, email, password, subscription picker, refresh controls
 - `SettingsWindowController` — separate settings window lifecycle
+- `WebLoginWindowController` — `WKWebView` login window for Cloudflare Turnstile-protected instances
 
 ## Storage
 

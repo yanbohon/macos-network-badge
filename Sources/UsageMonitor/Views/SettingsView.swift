@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var monitor: SubscriptionMonitor
+    @StateObject private var webLoginWindowController = WebLoginWindowController()
     @State private var baseURL: String
     @State private var email: String
     @State private var password: String
@@ -30,6 +31,10 @@ struct SettingsView: View {
                     Task { await login() }
                 }
                 .disabled(monitor.isRefreshing)
+                Button("网页登录") {
+                    openWebLogin()
+                }
+                .disabled(baseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 if let validationStatus {
                     Text(validationStatus)
                         .font(.caption)
@@ -75,5 +80,13 @@ struct SettingsView: View {
         } catch {
             validationStatus = monitor.lastError ?? "验证失败"
         }
+    }
+
+    private func openWebLogin() {
+        monitor.updateBaseURL(baseURL)
+        if !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            monitor.updateEmail(email)
+        }
+        webLoginWindowController.showWindow(monitor: monitor)
     }
 }

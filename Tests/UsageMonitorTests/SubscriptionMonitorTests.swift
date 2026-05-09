@@ -155,6 +155,38 @@ final class SubscriptionMonitorTests: XCTestCase {
         XCTAssertEqual(keychain.values[.accessToken], "second")
     }
 
+    func testCompletingWebLoginStoresTokenAndRefreshesSubscriptions() async throws {
+        let defaults = UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!
+        let keychain = InMemorySecretStore()
+        let loader = RequestRecordingLoader()
+        loader.responses = [
+            .init(statusCode: 200, body: Sub2APIClientTests.oneSubscriptionBody(id: "web", used: 12.34)),
+        ]
+        let monitor = SubscriptionMonitor(
+            userDefaults: defaults,
+            secretStore: keychain,
+            client: Sub2APIClient(requestLoader: loader),
+            timerFactory: ManualTimerFactory()
+        )
+
+        monitor.updateBaseURL("https://sub.example.com")
+        monitor.updateEmail("existing@example.com")
+        try await monitor.completeWebLogin(
+            WebLoginToken(
+                accessToken: "web-token",
+                refreshToken: "web-refresh",
+                expiresIn: 7200,
+                user: Sub2APIUser(id: 9, email: "web@example.com", balance: 18, status: "active")
+            )
+        )
+
+        XCTAssertEqual(keychain.values[.accessToken], "web-token")
+        XCTAssertEqual(keychain.values[.refreshToken], "web-refresh")
+        XCTAssertEqual(monitor.email, "web@example.com")
+        XCTAssertEqual(monitor.menuBarText, "$12.34/$100.00")
+        XCTAssertEqual(loader.requests.first?.value(forHTTPHeaderField: "Authorization"), "Bearer web-token")
+    }
+
     static func loginBodyWithoutRefreshToken(token: String) -> String {
         """
         {"code":0,"message":"success","data":{"access_token":"\(token)","expires_in":3600,"token_type":"Bearer","user":{"id":2,"email":"other@example.com","balance":12,"status":"active"}}}

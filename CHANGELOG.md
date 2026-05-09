@@ -15,6 +15,7 @@ All notable changes to 用量监控 are documented here.
 ### Added
 
 - sub2api login and subscriptions API client with injectable request loader for tests.
+- `WKWebView`网页登录 flow for Cloudflare Turnstile-protected instances.
 - Keychain-backed storage for password, access token, refresh token, and token expiry.
 - UserDefaults-backed storage for Base URL, email, selected subscription, and refresh interval.
 - Refresh behavior that logs in when the token is absent or expired and retries once after 401/403.

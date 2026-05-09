@@ -104,11 +104,14 @@ final class SubscriptionMonitor: ObservableObject {
     }
 
     var menuBarText: String {
-        guard !baseURLText.isEmpty, !email.isEmpty else { return "未配置" }
+        guard !baseURLText.isEmpty else { return "未配置" }
+        if email.isEmpty && !hasStoredAccessToken {
+            return "未配置"
+        }
         if authState == .needsLogin {
             return "未登录"
         }
-        guard !(password.isEmpty && ((try? secretStore.read(.accessToken)) ?? nil) == nil) else {
+        guard !(password.isEmpty && !hasStoredAccessToken) else {
             return "未登录"
         }
         if let selectedSubscription {
@@ -196,6 +199,23 @@ final class SubscriptionMonitor: ObservableObject {
         } catch {
             lastError = userMessage(for: error)
             updateAuthState()
+        }
+    }
+
+    func completeWebLogin(_ token: WebLoginToken) async throws {
+        guard validatedBaseURL() != nil else {
+            throw ValidationError.invalidBaseURL
+        }
+
+        do {
+            try storeWebToken(token)
+            try await refreshSubscriptions(accessToken: token.accessToken, retryUnauthorized: false)
+            lastError = nil
+            authState = .authenticated
+        } catch {
+            lastError = userMessage(for: error)
+            authState = .error
+            throw error
         }
     }
 
@@ -299,7 +319,14 @@ final class SubscriptionMonitor: ObservableObject {
     }
 
     private var configurationIsComplete: Bool {
-        validatedBaseURL() != nil && !email.isEmpty && !password.isEmpty
+        validatedBaseURL() != nil && (!password.isEmpty || hasStoredAccessToken)
+    }
+
+    private var hasStoredAccessToken: Bool {
+        guard let token = try? secretStore.read(.accessToken) else {
+            return false
+        }
+        return !token.isEmpty
     }
 
     private func validatedBaseURL() -> URL? {
@@ -316,9 +343,9 @@ final class SubscriptionMonitor: ObservableObject {
 
     private func updateAuthState() {
         if baseURLText.isEmpty || email.isEmpty {
-            authState = .notConfigured
+            authState = hasStoredAccessToken && !baseURLText.isEmpty ? .ready : .notConfigured
         } else if password.isEmpty {
-            authState = .needsLogin
+            authState = hasStoredAccessToken ? .ready : .needsLogin
         } else if lastError != nil {
             authState = .error
         } else {
@@ -343,6 +370,23 @@ final class SubscriptionMonitor: ObservableObject {
             return error.userMessage
         }
         return "网络请求失败"
+    }
+
+    private func storeWebToken(_ token: WebLoginToken) throws {
+        try secretStore.write(token.accessToken, for: .accessToken)
+        if let refreshToken = token.refreshToken {
+            try secretStore.write(refreshToken, for: .refreshToken)
+        } else {
+            try secretStore.delete(.refreshToken)
+        }
+        let expiryInterval = token.expiresIn ?? 86_400
+        let expiry = Date().addingTimeInterval(expiryInterval).timeIntervalSince1970
+        try secretStore.write(String(expiry), for: .accessTokenExpiry)
+
+        if let user = token.user {
+            self.user = user
+            updateEmail(user.email)
+        }
     }
 }
 
