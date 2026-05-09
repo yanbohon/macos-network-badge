@@ -20,7 +20,8 @@ In scope:
 - Remove email/password login.
 - Remove web login and token extraction.
 - Add `Base URL + API Key -> GET /v1/usage`.
-- Show `remaining` in the menu bar.
+- Show `subscription.daily_usage_usd` in the menu bar.
+- Show `remaining` as the popover balance value.
 - Show `planName`, `mode`, `subscription`, `usage`, and `model_stats` in the popover.
 - Store the API key in Keychain.
 - Store Base URL, refresh interval, and menu-bar decimal preference in UserDefaults.
@@ -100,7 +101,7 @@ It should not contain any login-specific code after the refactor.
 
 ### Views
 
-- `MenuBarView` shows the `remaining` value and the current status color.
+- `MenuBarView` shows the current day's usage value and the current status color.
 - `SettingsView` contains only Base URL, API Key, refresh interval, decimal preference, validation, and manual refresh.
 - `WebLoginWindowController` and `WebLoginTokenExtractor` are removed.
 
@@ -117,8 +118,8 @@ It should not contain any login-specific code after the refactor.
 
 The menu bar label is a single value:
 
-- default: `remaining`
-- decimal preference off: truncate `remaining` to an integer
+- default: `subscription.daily_usage_usd`
+- decimal preference off: truncate the displayed daily usage value to an integer
 - if no config exists: `未配置`
 - if the key is invalid and there is no cache: `未授权`
 - if refresh fails and there is no cache: `刷新失败`
@@ -127,9 +128,9 @@ The menu bar label is a single value:
 
 ### Menu Bar
 
-The menu bar should focus on the account's remaining balance:
+The menu bar should focus on today's usage cost:
 
-- show `remaining` as the primary value
+- show `subscription.daily_usage_usd` as the primary value
 - use the decimal preference only for the menu bar label
 - do not show subscription selection, because there is only one account view now
 - use the daily usage ratio from `subscription.daily_usage_usd / subscription.daily_limit_usd` only for color state
@@ -222,7 +223,8 @@ Unit tests should cover:
 - request path and `Authorization: Bearer` header
 - response decoding for the sample JSON
 - `isValid == false` handling
-- menu-bar formatting for `remaining`
+- menu-bar formatting for `subscription.daily_usage_usd`
+- popover balance formatting for `remaining`
 - decimal truncation behavior
 - health-state thresholds
 - refresh failure with and without cached data
@@ -251,7 +253,7 @@ The change is done when:
 
 - the app can be configured with Base URL and API key only
 - the app refreshes `GET /v1/usage` successfully
-- the menu bar shows `remaining`
-- the popover shows the usage snapshot and model stats
+- the menu bar shows `subscription.daily_usage_usd`
+- the popover shows the usage snapshot, model stats, and `remaining`
 - the app preserves the last successful snapshot across failed refreshes during the same run
 - no login or web-login UI remains
