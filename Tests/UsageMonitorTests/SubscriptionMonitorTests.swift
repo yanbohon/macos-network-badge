@@ -73,6 +73,38 @@ final class SubscriptionMonitorTests: XCTestCase {
         XCTAssertEqual(monitor.lastError, "server down")
     }
 
+    func testKeychainInteractionErrorsUseActionableMessage() async {
+        let defaults = UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!
+        let monitor = SubscriptionMonitor(
+            userDefaults: defaults,
+            secretStore: ThrowingSecretStore(error: KeychainStoreError.interactionNotAllowed),
+            client: Sub2APIClient(requestLoader: RequestRecordingLoader()),
+            timerFactory: ManualTimerFactory()
+        )
+
+        monitor.updateBaseURL("https://sub.example.com")
+
+        await monitor.refreshNow()
+
+        XCTAssertEqual(monitor.lastError, "钥匙串访问被 macOS 拒绝，请删除旧钥匙串条目后重新验证")
+    }
+
+    func testStartupMenuBarStateDoesNotRepeatedlyReadStoredAccessToken() {
+        let defaults = UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!
+        let keychain = CountingSecretStore()
+        let monitor = SubscriptionMonitor(
+            userDefaults: defaults,
+            secretStore: keychain,
+            client: Sub2APIClient(requestLoader: RequestRecordingLoader()),
+            timerFactory: ManualTimerFactory()
+        )
+
+        monitor.updateBaseURL("https://sub.example.com")
+        _ = monitor.menuBarText
+
+        XCTAssertLessThanOrEqual(keychain.readCount(for: .accessToken), 1)
+    }
+
     func testInvalidCredentialsShowNotLoggedIn() async {
         let defaults = UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!
         let loader = RequestRecordingLoader()
@@ -121,7 +153,7 @@ final class SubscriptionMonitorTests: XCTestCase {
 
         await monitor.refreshNow()
 
-        XCTAssertEqual(monitor.menuBarText, "$84.04/$100.00")
+        XCTAssertEqual(monitor.menuBarText, "$84.04\n$100.00")
         XCTAssertEqual(monitor.lastError, "server down")
     }
 
@@ -183,7 +215,7 @@ final class SubscriptionMonitorTests: XCTestCase {
         XCTAssertEqual(keychain.values[.accessToken], "web-token")
         XCTAssertEqual(keychain.values[.refreshToken], "web-refresh")
         XCTAssertEqual(monitor.email, "web@example.com")
-        XCTAssertEqual(monitor.menuBarText, "$12.34/$100.00")
+        XCTAssertEqual(monitor.menuBarText, "$12.34\n$100.00")
         XCTAssertEqual(loader.requests.first?.value(forHTTPHeaderField: "Authorization"), "Bearer web-token")
     }
 

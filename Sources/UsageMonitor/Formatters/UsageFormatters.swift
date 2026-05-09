@@ -18,6 +18,13 @@ enum UsageFormatters {
         return "\(currency(used))/\(currency(limit))"
     }
 
+    static func compactDailyUsageText(used: Double, limit: Double) -> String {
+        if limit == 0 {
+            return "\(currency(used))\n∞"
+        }
+        return "\(currency(used))\n\(currency(limit))"
+    }
+
     static func percentage(used: Double, limit: Double) -> Double? {
         guard limit > 0 else { return nil }
         return used / limit

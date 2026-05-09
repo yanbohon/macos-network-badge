@@ -98,8 +98,20 @@ fi
 # For local development, you can skip this.
 # For distribution, you need an Apple Developer account.
 
-IDENTITY="${CODESIGN_IDENTITY:-"-"}"  # "-" means ad-hoc signing
-echo -e "${YELLOW}Code signing with identity: $IDENTITY${NC}"
+if [ -n "${CODESIGN_IDENTITY:-}" ]; then
+    IDENTITY="$CODESIGN_IDENTITY"
+    SIGNING_SOURCE="CODESIGN_IDENTITY"
+else
+    IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | awk -F '"' '/"Apple Development:/{ print $2; exit }')"
+    if [ -n "$IDENTITY" ]; then
+        SIGNING_SOURCE="auto-detected Apple Development"
+    else
+        IDENTITY="-"  # "-" means ad-hoc signing
+        SIGNING_SOURCE="ad-hoc fallback"
+    fi
+fi
+
+echo -e "${YELLOW}Code signing with identity: $IDENTITY ($SIGNING_SOURCE)${NC}"
 codesign --force --deep --sign "$IDENTITY" "$APP_DIR"
 echo -e "${GREEN}Code signing complete!${NC}"
 

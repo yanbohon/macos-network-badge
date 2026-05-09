@@ -178,6 +178,43 @@ final class InMemorySecretStore: SecretStoring {
     }
 }
 
+final class CountingSecretStore: SecretStoring {
+    private var readCounts: [SecretKey: Int] = [:]
+
+    func read(_ key: SecretKey) throws -> String? {
+        readCounts[key, default: 0] += 1
+        return nil
+    }
+
+    func write(_ value: String, for key: SecretKey) throws {}
+
+    func delete(_ key: SecretKey) throws {}
+
+    func readCount(for key: SecretKey) -> Int {
+        readCounts[key, default: 0]
+    }
+}
+
+final class ThrowingSecretStore: SecretStoring {
+    let error: Error
+
+    init(error: Error) {
+        self.error = error
+    }
+
+    func read(_ key: SecretKey) throws -> String? {
+        throw error
+    }
+
+    func write(_ value: String, for key: SecretKey) throws {
+        throw error
+    }
+
+    func delete(_ key: SecretKey) throws {
+        throw error
+    }
+}
+
 final class ManualTimerFactory: RefreshTimerFactory {
     func schedule(interval: TimeInterval, action: @escaping @Sendable () -> Void) -> RefreshTimer {
         ManualRefreshTimer()

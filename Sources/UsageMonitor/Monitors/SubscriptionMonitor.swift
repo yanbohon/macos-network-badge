@@ -71,6 +71,7 @@ final class SubscriptionMonitor: ObservableObject {
     private let client: Sub2APIClient
     private let timerFactory: RefreshTimerFactory
     private var refreshTimer: RefreshTimer?
+    private var secretReadCache: [SecretKey: Result<String?, Error>] = [:]
 
     init(
         userDefaults: UserDefaults = .standard,
@@ -90,7 +91,9 @@ final class SubscriptionMonitor: ObservableObject {
         refreshIntervalMinutes = Self.allowedRefreshIntervals.contains(savedInterval)
             ? savedInterval
             : Self.defaultRefreshInterval
-        password = (try? secretStore.read(.password)) ?? ""
+        let passwordReadResult = Result { try secretStore.read(.password) }
+        password = (try? passwordReadResult.get()) ?? ""
+        secretReadCache[.password] = passwordReadResult
         updateAuthState()
         scheduleTimer()
     }
@@ -115,7 +118,7 @@ final class SubscriptionMonitor: ObservableObject {
             return "未登录"
         }
         if let selectedSubscription {
-            return UsageFormatters.dailyUsageText(
+            return UsageFormatters.compactDailyUsageText(
                 used: selectedSubscription.usedTodayUSD,
                 limit: selectedSubscription.group.dailyLimitUSD
             )
@@ -154,9 +157,9 @@ final class SubscriptionMonitor: ObservableObject {
     func updatePassword(_ value: String) {
         password = value
         if value.isEmpty {
-            try? secretStore.delete(.password)
+            try? deleteSecret(.password)
         } else {
-            try? secretStore.write(value, for: .password)
+            try? writeSecret(value, for: .password)
         }
         updateAuthState()
     }
@@ -287,7 +290,7 @@ final class SubscriptionMonitor: ObservableObject {
     }
 
     private func validAccessTokenOrLogin() async throws -> String {
-        if let token = try secretStore.read(.accessToken), !token.isEmpty, !isTokenExpired {
+        if let token = try readSecret(.accessToken), !token.isEmpty, !isTokenExpired {
             return token
         }
         let loginData = try await login()
@@ -296,21 +299,21 @@ final class SubscriptionMonitor: ObservableObject {
     }
 
     private func storeToken(_ token: Sub2APILoginData) throws {
-        try secretStore.write(password, for: .password)
-        try secretStore.write(token.accessToken, for: .accessToken)
+        try writeSecret(password, for: .password)
+        try writeSecret(token.accessToken, for: .accessToken)
         if let refreshToken = token.refreshToken {
-            try secretStore.write(refreshToken, for: .refreshToken)
+            try writeSecret(refreshToken, for: .refreshToken)
         } else {
-            try secretStore.delete(.refreshToken)
+            try deleteSecret(.refreshToken)
         }
         let expiry = Date().addingTimeInterval(token.expiresIn).timeIntervalSince1970
-        try secretStore.write(String(expiry), for: .accessTokenExpiry)
+        try writeSecret(String(expiry), for: .accessTokenExpiry)
         user = token.user
     }
 
     private var isTokenExpired: Bool {
         guard
-            let raw = try? secretStore.read(.accessTokenExpiry),
+            let raw = try? readSecret(.accessTokenExpiry),
             let timestamp = Double(raw)
         else {
             return true
@@ -323,7 +326,7 @@ final class SubscriptionMonitor: ObservableObject {
     }
 
     private var hasStoredAccessToken: Bool {
-        guard let token = try? secretStore.read(.accessToken) else {
+        guard let token = try? readSecret(.accessToken) else {
             return false
         }
         return !token.isEmpty
@@ -369,19 +372,56 @@ final class SubscriptionMonitor: ObservableObject {
         if let error = error as? ValidationError {
             return error.userMessage
         }
+        if let error = error as? KeychainStoreError {
+            switch error {
+            case .interactionNotAllowed:
+                return "钥匙串访问被 macOS 拒绝，请删除旧钥匙串条目后重新验证"
+            case .invalidData, .unhandledStatus:
+                return "钥匙串访问失败，请重新验证"
+            }
+        }
         return "网络请求失败"
     }
 
+    private func readSecret(_ key: SecretKey) throws -> String? {
+        if let cached = secretReadCache[key] {
+            return try cached.get()
+        }
+        let result = Result { try secretStore.read(key) }
+        secretReadCache[key] = result
+        return try result.get()
+    }
+
+    private func writeSecret(_ value: String, for key: SecretKey) throws {
+        do {
+            try secretStore.write(value, for: key)
+            secretReadCache[key] = .success(value)
+        } catch {
+            secretReadCache[key] = .failure(error)
+            throw error
+        }
+    }
+
+    private func deleteSecret(_ key: SecretKey) throws {
+        do {
+            try secretStore.delete(key)
+            secretReadCache[key] = .success(nil)
+        } catch {
+            secretReadCache[key] = .failure(error)
+            throw error
+        }
+    }
+
     private func storeWebToken(_ token: WebLoginToken) throws {
-        try secretStore.write(token.accessToken, for: .accessToken)
+        try writeSecret(token.accessToken, for: .accessToken)
         if let refreshToken = token.refreshToken {
-            try secretStore.write(refreshToken, for: .refreshToken)
+            try writeSecret(refreshToken, for: .refreshToken)
         } else {
-            try secretStore.delete(.refreshToken)
+            try deleteSecret(.refreshToken)
         }
         let expiryInterval = token.expiresIn ?? 86_400
         let expiry = Date().addingTimeInterval(expiryInterval).timeIntervalSince1970
-        try secretStore.write(String(expiry), for: .accessTokenExpiry)
+        try writeSecret(String(expiry), for: .accessTokenExpiry)
 
         if let user = token.user {
             self.user = user

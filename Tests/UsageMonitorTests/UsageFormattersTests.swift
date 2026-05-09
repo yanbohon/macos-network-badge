@@ -23,6 +23,17 @@ final class UsageFormattersTests: XCTestCase {
         )
     }
 
+    func testCompactDailyUsageTextStacksUsedAndLimitForMenuBar() {
+        XCTAssertEqual(
+            UsageFormatters.compactDailyUsageText(used: 84.04, limit: 500),
+            "$84.04\n$500.00"
+        )
+        XCTAssertEqual(
+            UsageFormatters.compactDailyUsageText(used: 84.04, limit: 0),
+            "$84.04\n∞"
+        )
+    }
+
     func testHealthThresholdsMapAtEightyAndNinetyFivePercent() {
         XCTAssertEqual(UsageFormatters.healthState(used: 79.99, limit: 100), .normal)
         XCTAssertEqual(UsageFormatters.healthState(used: 80, limit: 100), .warning)

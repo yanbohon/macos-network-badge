@@ -8,7 +8,7 @@
 - Calls `POST /api/v1/auth/login` and `GET /api/v1/subscriptions`
 - Stores password and token data in macOS Keychain under `com.usagemonitor.app.sub2api`
 - Stores Base URL, email, selected subscription, and refresh interval in UserDefaults
-- Shows the selected active subscription's daily usage in the menu bar, for example `$84.04/$500.00`
+- Shows the selected active subscription's daily usage in the menu bar, stacked as `$84.04` over `$500.00`
 - Shows account balance, refresh status, active subscription details, weekly/monthly usage, expiry, and inactive subscription count in the popover
 - Preserves the last successful subscription list when refresh fails
 
