@@ -1,6 +1,6 @@
 #!/bin/bash
 # ---------------------------------------------------------
-# create-dmg.sh — Package NetworkBadge.app into a .dmg file
+# create-dmg.sh — Package UsageMonitor.app into a .dmg file
 #
 # A DMG (Disk Image) is the standard way to distribute
 # macOS apps outside the App Store. When users open the DMG,
@@ -15,7 +15,7 @@
 #   ./scripts/create-dmg.sh
 #
 # Output:
-#   build/NetworkBadge.dmg
+#   build/UsageMonitor.dmg
 # ---------------------------------------------------------
 
 set -euo pipefail
@@ -26,11 +26,11 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-APP_DIR="build/NetworkBadge.app"
-DMG_NAME="NetworkBadge"
+APP_DIR="build/UsageMonitor.app"
+DMG_NAME="UsageMonitor"
 DMG_OUTPUT="build/${DMG_NAME}.dmg"
 DMG_TEMP="build/${DMG_NAME}-temp.dmg"
-VOLUME_NAME="Network Badge"
+VOLUME_NAME="用量监控"
 DMG_SIZE="50m"  # 50 MB should be plenty
 
 echo -e "${GREEN}=== Creating DMG ===${NC}"

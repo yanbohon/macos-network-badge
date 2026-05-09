@@ -1,6 +1,6 @@
 #!/bin/bash
 # ---------------------------------------------------------
-# install.sh — Build and install NetworkBadge.app
+# install.sh — Build and install UsageMonitor.app
 #
 # This script:
 #   1. Builds the .app bundle (via build-app.sh)
@@ -21,11 +21,11 @@ NC='\033[0m'
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-APP_BUNDLE="$PROJECT_DIR/build/NetworkBadge.app"
+APP_BUNDLE="$PROJECT_DIR/build/UsageMonitor.app"
 INSTALL_DIR="/Applications"
 
 # ── Step 1: Build the .app bundle ─────────────────────────
-echo -e "${YELLOW}Building NetworkBadge.app...${NC}"
+echo -e "${YELLOW}Building UsageMonitor.app...${NC}"
 "$SCRIPT_DIR/build-app.sh"
 
 if [ ! -d "$APP_BUNDLE" ]; then
@@ -38,28 +38,28 @@ echo ""
 echo -e "${YELLOW}Installing to $INSTALL_DIR...${NC}"
 
 # Remove previous installation if it exists
-if [ -d "$INSTALL_DIR/NetworkBadge.app" ]; then
+if [ -d "$INSTALL_DIR/UsageMonitor.app" ]; then
     echo -e "${YELLOW}Removing previous installation...${NC}"
-    rm -rf "$INSTALL_DIR/NetworkBadge.app"
+    rm -rf "$INSTALL_DIR/UsageMonitor.app"
 fi
 
-cp -R "$APP_BUNDLE" "$INSTALL_DIR/NetworkBadge.app"
-echo -e "${GREEN}Installed to $INSTALL_DIR/NetworkBadge.app${NC}"
+cp -R "$APP_BUNDLE" "$INSTALL_DIR/UsageMonitor.app"
+echo -e "${GREEN}Installed to $INSTALL_DIR/UsageMonitor.app${NC}"
 
 # ── Step 3: Launch the app ────────────────────────────────
 echo ""
-read -p "Launch NetworkBadge now? [Y/n] " -n 1 -r
+read -p "Launch UsageMonitor now? [Y/n] " -n 1 -r
 echo ""
 if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-    open "$INSTALL_DIR/NetworkBadge.app"
-    echo -e "${GREEN}NetworkBadge is running!${NC}"
+    open "$INSTALL_DIR/UsageMonitor.app"
+    echo -e "${GREEN}UsageMonitor is running!${NC}"
 fi
 
 echo ""
 echo -e "${GREEN}=== Installation complete! ===${NC}"
 echo ""
 echo "To enable auto-launch at login:"
-echo "  Click the menu bar icon → toggle \"Launch at Login\""
+echo "  Open settings from the menu bar icon and enable it from macOS Login Items if needed."
 echo ""
 echo "To uninstall:"
-echo "  rm -rf $INSTALL_DIR/NetworkBadge.app"
+echo "  rm -rf $INSTALL_DIR/UsageMonitor.app"

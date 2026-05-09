@@ -98,19 +98,19 @@ jobs:
         id: checksums
         run: |
           cd build
-          shasum -a 256 NetworkBadge.dmg > NetworkBadge.dmg.sha256
-          cat NetworkBadge.dmg.sha256
-          CHECKSUM=$(awk '{print $1}' NetworkBadge.dmg.sha256)
+          shasum -a 256 UsageMonitor.dmg > UsageMonitor.dmg.sha256
+          cat UsageMonitor.dmg.sha256
+          CHECKSUM=$(awk '{print $1}' UsageMonitor.dmg.sha256)
           echo "sha256=$CHECKSUM" >> "$GITHUB_OUTPUT"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: NetworkBadge-${{ steps.version.outputs.tag }}
+          name: UsageMonitor-${{ steps.version.outputs.tag }}
           path: |
-            build/NetworkBadge.dmg
-            build/NetworkBadge.dmg.sha256
-            build/NetworkBadge.app
+            build/UsageMonitor.dmg
+            build/UsageMonitor.dmg.sha256
+            build/UsageMonitor.app
           retention-days: 90
 
       - name: Create and push tag
@@ -133,24 +133,24 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
-          name: Network Badge ${{ steps.version.outputs.tag }}
+          name: 用量监控 ${{ steps.version.outputs.tag }}
           draft: ${{ steps.flags.outputs.draft }}
           prerelease: ${{ steps.flags.outputs.prerelease }}
           generate_release_notes: true
           body: |
             ## Installation
 
-            Download `NetworkBadge.dmg`, open it, and drag Network Badge to Applications.
+            Download `UsageMonitor.dmg`, open it, and drag 用量监控 to Applications.
 
             ## Verify download
 
             ```
-            shasum -a 256 NetworkBadge.dmg
+            shasum -a 256 UsageMonitor.dmg
             ```
             Expected: `${{ steps.checksums.outputs.sha256 }}`
           files: |
-            build/NetworkBadge.dmg
-            build/NetworkBadge.dmg.sha256
+            build/UsageMonitor.dmg
+            build/UsageMonitor.dmg.sha256
 
       - name: Create merge-back PR
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release/')

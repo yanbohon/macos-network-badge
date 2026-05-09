@@ -10,7 +10,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "NetworkBadge",
+    name: "UsageMonitor",
 
     // Requires macOS 13+ for SwiftUI's MenuBarExtra
     platforms: [
@@ -20,25 +20,18 @@ let package = Package(
     targets: [
         // ── Main App ──────────────────────────────────────
         .executableTarget(
-            name: "NetworkBadge",
-            path: "Sources/NetworkBadge",
+            name: "UsageMonitor",
+            path: "Sources/UsageMonitor",
             linkerSettings: [
-                // CoreWLAN: needed to read WiFi SSID and signal strength
-                .linkedFramework("CoreWLAN"),
-                // CoreLocation: needed for GPS tracking of network quality
-                .linkedFramework("CoreLocation"),
-                // MapKit: needed for the quality map view
-                .linkedFramework("MapKit"),
-                // SQLite3: needed for persistent quality record storage
-                .linkedLibrary("sqlite3"),
+                .linkedFramework("Security"),
             ]
         ),
 
         // ── Unit Tests ───────────────────────────────────
         .testTarget(
-            name: "NetworkBadgeTests",
-            dependencies: ["NetworkBadge"],
-            path: "Tests/NetworkBadgeTests"
+            name: "UsageMonitorTests",
+            dependencies: ["UsageMonitor"],
+            path: "Tests/UsageMonitorTests"
         ),
     ]
 )

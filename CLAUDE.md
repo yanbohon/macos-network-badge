@@ -1,103 +1,58 @@
-# Network Badge - macOS Menu Bar Network Monitor
+# 用量监控 - sub2api Usage Monitor
 
 ## Project Overview
-A native macOS menu bar app (Swift/SwiftUI) that shows live network latency
-and connection type. Built for travellers who want to monitor their internet
-quality on trains, cafés, etc.
+
+Native macOS menu bar app written in Swift/SwiftUI. The user-facing product name is `用量监控`; the technical package and executable are `UsageMonitor`.
+
+The app connects to one sub2api instance and one account, stores secrets in Keychain, stores ordinary preferences in UserDefaults, and displays the selected subscription's daily usage in the menu bar.
 
 ## Build Commands
+
 ```bash
-# Build (debug)
 swift build
-
-# Build (release)
 swift build -c release
-
-# Run locally (after building)
-swift run NetworkBadge
-
-# Build .app bundle
+swift run UsageMonitor
 ./scripts/build-app.sh
-
-# Create DMG for distribution
 ./scripts/create-dmg.sh
 ```
 
 ## Test Commands
+
 ```bash
-# Run all tests
 swift test
-
-# Run a specific test class
-swift test --filter NetworkBadgeTests.ConnectionInfoTests
-
-# Run with verbose output
-swift test --verbose
+swift test --filter UsageMonitorTests.Sub2APIClientTests
 ```
 
-## Lint / Format
-```bash
-# If swiftlint is installed
-swiftlint lint Sources/ Tests/
-
-# If swift-format is installed
-swift-format lint --recursive Sources/ Tests/
-```
+No test should call a real sub2api service. Use the injectable `Sub2APIRequestLoading` protocol for API-client tests.
 
 ## Architecture
-- **SwiftUI MenuBarExtra** — the menu bar presence (macOS 13+)
-- **NWPathMonitor** — detects network interface type (WiFi, Ethernet, etc.)
-- **CoreWLAN** — reads WiFi SSID and signal info
-- **URLSession** — measures HTTP latency to detect real internet quality
-- **CLLocationManager + GPS2IP** — GPS location tracking with iPhone fallback
-- **LocationIntelligence** — Kalman filtering, outlier detection, and road snapping for clean trails
-- **SQLite (WAL mode)** — append-only storage for GPS-tagged quality records
-- **MapKit** — quality trail visualization with color-coded polylines
-- **UserNotifications** — alerts on quality degradation, connection loss, and predictive warnings
-- **ObservableObject + @Published pattern** — reactive data flow from monitors → UI
 
-## Key Files
+- `UsageMonitorApp` — SwiftUI `MenuBarExtra` entry point
+- `Sub2APIModels` — login/subscription Codable DTOs and normalized catalog helpers
+- `Sub2APIClient` — login/subscriptions requests, envelope decoding, HTTP/API error mapping
+- `KeychainStore` — Security framework wrapper for password/token storage
+- `SubscriptionMonitor` — `ObservableObject` owning config, auth, refresh, selected subscription, cached data, and timer state
+- `UsageFormatters` — currency, daily usage, remaining quota, percentage, expiry, and quota health formatting
+- `MenuBarView` — popover UI
+- `SettingsView` — Base URL, email, password, subscription picker, refresh controls
+- `SettingsWindowController` — separate settings window lifecycle
 
-### App Entry
-- `Sources/NetworkBadge/NetworkBadgeApp.swift` — App entry point, MenuBarExtra setup
+## Storage
 
-### Monitors
-- `Sources/NetworkBadge/Monitors/NetworkMonitor.swift` — Network type detection via NWPathMonitor
-- `Sources/NetworkBadge/Monitors/LatencyMonitor.swift` — HTTP latency measurement
-- `Sources/NetworkBadge/Monitors/LocationMonitor.swift` — GPS location tracking, records quality on significant moves
-- `Sources/NetworkBadge/Monitors/LocationIntelligence.swift` — Kalman filtering, outlier detection, road snapping
-- `Sources/NetworkBadge/Monitors/GPS2IPSource.swift` — TCP client for GPS2IP iOS app (NMEA over socket)
-- `Sources/NetworkBadge/Monitors/NotificationManager.swift` — macOS notifications on quality changes
-- `Sources/NetworkBadge/Monitors/UpdateChecker.swift` — GitHub release polling for app updates
+UserDefaults:
 
-### Models
-- `Sources/NetworkBadge/Models/ConnectionInfo.swift` — Network connection data types
-- `Sources/NetworkBadge/Models/QualityRecord.swift` — GPS-tagged quality measurement for storage
-- `Sources/NetworkBadge/Models/RunDetector.swift` — Groups records into journeys by time gaps
+- Base URL
+- Email
+- Selected menu-bar subscription ID
+- Refresh interval
 
-### Storage
-- `Sources/NetworkBadge/Storage/QualityDatabase.swift` — Append-only SQLite database for quality history
-- `Sources/NetworkBadge/Storage/TileCache.swift` — Offline MapKit tile caching
+Keychain service `com.usagemonitor.app.sub2api`:
 
-### Views
-- `Sources/NetworkBadge/Views/MenuBarView.swift` — Main popover UI
-- `Sources/NetworkBadge/Views/SparklineView.swift` — Mini latency chart (green→red)
-- `Sources/NetworkBadge/Views/QualityMapView.swift` — MapKit map with colored quality trails
-- `Sources/NetworkBadge/Views/QualityTrailRenderer.swift` — Gradient polyline renderer for trail quality
-- `Sources/NetworkBadge/Views/DataBrowserView.swift` — Table view for browsing records with CSV export
-- `Sources/NetworkBadge/Views/SettingsView.swift` — Settings for notifications, location, latency targets
-- `Sources/NetworkBadge/Views/MapWindowController.swift` — Map window lifecycle
-- `Sources/NetworkBadge/Views/DataBrowserWindowController.swift` — Data browser window lifecycle
-- `Sources/NetworkBadge/Views/SettingsWindowController.swift` — Settings window lifecycle
+- Password
+- Access token
+- Refresh token
+- Access-token expiry timestamp
 
-### Helpers
-- `Sources/NetworkBadge/Helpers/NetworkInterfaceHelper.swift` — Interface type detection (WiFi, USB, VPN, etc.)
-- `Sources/NetworkBadge/Helpers/CoordinateUtils.swift` — Haversine math for distance/bearing projection
+## Removed Domain
 
-### Tests
-- `Tests/NetworkBadgeTests/` — Unit tests (10 test files covering models, monitors, storage, and views)
-
-## Platform
-- macOS 13+ (Ventura) required for MenuBarExtra
-- Swift 5.9+
-- No external dependencies — uses only Apple frameworks
+Do not reintroduce network latency monitoring, GPS tracking, maps, quality databases, data browsers, predictive alerts, update checking, or multi-account mode unless a new spec explicitly asks for it.

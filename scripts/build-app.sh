@@ -1,6 +1,6 @@
 #!/bin/bash
 # ---------------------------------------------------------
-# build-app.sh — Build NetworkBadge.app from source
+# build-app.sh — Build UsageMonitor.app from source
 #
 # This script:
 #   1. Compiles the Swift code in release mode
@@ -12,7 +12,7 @@
 #   ./scripts/build-app.sh
 #
 # Output:
-#   build/NetworkBadge.app
+#   build/UsageMonitor.app
 # ---------------------------------------------------------
 
 set -euo pipefail  # Exit on any error
@@ -23,7 +23,7 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'  # No Color
 
-echo -e "${GREEN}=== Building Network Badge ===${NC}"
+echo -e "${GREEN}=== Building 用量监控 ===${NC}"
 
 # ── Step 1: Compile ──────────────────────────────────────
 if [ "${DEBUG:-}" = "1" ]; then
@@ -38,7 +38,7 @@ fi
 
 # Find the compiled binary
 # Swift Package Manager puts it in .build/<config>/
-BINARY_PATH=".build/$BUILD_CONFIG/NetworkBadge"
+BINARY_PATH=".build/$BUILD_CONFIG/UsageMonitor"
 if [ ! -f "$BINARY_PATH" ]; then
     echo -e "${RED}Error: Binary not found at $BINARY_PATH${NC}"
     echo "Make sure 'swift build -c release' completed successfully."
@@ -50,14 +50,14 @@ echo -e "${GREEN}Compilation successful!${NC}"
 # ── Step 2: Create .app bundle structure ─────────────────
 # macOS .app bundles are just directories with a specific structure:
 #
-#   NetworkBadge.app/
+#   UsageMonitor.app/
 #     Contents/
 #       Info.plist          ← App metadata
 #       MacOS/
-#         NetworkBadge      ← The actual binary
+#         UsageMonitor      ← The actual binary
 #       Resources/          ← Icons, assets (optional)
 
-APP_DIR="build/NetworkBadge.app"
+APP_DIR="build/UsageMonitor.app"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
@@ -75,10 +75,10 @@ mkdir -p "$RESOURCES_DIR"
 echo -e "${YELLOW}Copying binary and resources...${NC}"
 
 # Copy the compiled binary
-cp "$BINARY_PATH" "$MACOS_DIR/NetworkBadge"
+cp "$BINARY_PATH" "$MACOS_DIR/UsageMonitor"
 
 # Make it executable
-chmod +x "$MACOS_DIR/NetworkBadge"
+chmod +x "$MACOS_DIR/UsageMonitor"
 
 # Copy Info.plist (tells macOS about our app)
 cp "Resources/Info.plist" "$CONTENTS_DIR/Info.plist"

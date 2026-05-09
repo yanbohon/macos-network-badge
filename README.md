@@ -1,80 +1,52 @@
-# Network Badge
+# 用量监控
 
-A native macOS menu bar app that shows **live internet latency** and **connection type** at a glance. Built for travellers who want to monitor their internet quality on trains, in cafes, or wherever they roam.
-
-## Screenshots
-<img width="297" height="277" alt="image" src="https://github.com/user-attachments/assets/e5276b4b-1d09-4c10-8d96-387403383ed4" />
-<img width="298" height="274" alt="image" src="https://github.com/user-attachments/assets/d6b2d4d8-8bed-48af-aca4-416b32e277da" />
-
+`用量监控` is a native macOS menu bar app for monitoring one sub2api account. The technical executable name is `UsageMonitor`, with bundle identifier `com.usagemonitor.app`.
 
 ## What It Does
 
-- Shows real-time ping latency in the menu bar (e.g. `42ms`)
-- Detects your connection type: **WiFi**, **Ethernet**, **USB Tethering**, **Cellular**
-- Displays WiFi network name (SSID) — see if you're on "NMBS-WiFi" or "Starbucks"
-- Color-coded quality indicator: green (excellent) → yellow (fair) → red (bad)
-- Keeps a history of recent measurements so you can spot trends
-- Runs silently in the menu bar — no dock icon, no window
-
-## Optional Features
-
-Everything below is **off by default** and can be enabled in Settings. None of it is required — the core app works fine without any of these. But if you ride trains with questionable WiFi and want ammunition for a strongly-worded email to your favourite railway company, read on.
-
-### Smart Alerts
-
-Network Badge can notify you when things go wrong (or are about to). Each alert type is independently toggleable in Settings:
-
-| Alert | What it does | Default |
-|-------|-------------|---------|
-| **Latency degradation** | Notifies when quality drops to poor or bad | On |
-| **Connection lost** | Notifies when WiFi, Ethernet, or tethering disconnects entirely | Off |
-| **Rough connection ahead** | Predicts bad connectivity ~2 minutes ahead based on historical data from the same route | Off |
-
-"Rough connection ahead" requires GPS tracking (below) and enough historical data from previous trips. The more you ride, the smarter it gets.
-
-All alerts share a 30-second cooldown to avoid notification spam.
-
-### GPS Quality Tracking
-
-Enable GPS tracking to record *where* your connection was good or bad. This builds up a personal quality database (`~/.networkbadge/quality.db`) over time — handy for mapping dead zones on your commute or proving to NMBS/SNCB that their WiFi drops every single time between Bruxelles-Midi and Gent-Sint-Pieters.
-
-- **Quality map** — visual map with color-coded pins and an Uber-style trail
-- **Kalman-smoothed GPS** — filters out noisy readings for cleaner tracks
-- **GPS2IP support** — use your iPhone's GPS over WiFi/USB for better accuracy on Macs without GPS hardware
-- **IP geolocation fallback** — rough location from IP address when GPS is unavailable
-- **Data browser** — inspect stored measurements
-
-### Auto-Update Checker
-
-Periodically checks GitHub Releases for newer versions. No telemetry, no phoning home beyond a single GitHub API call.
+- Connects to one sub2api instance with Base URL, email, and password
+- Calls `POST /api/v1/auth/login` and `GET /api/v1/subscriptions`
+- Stores password and token data in macOS Keychain under `com.usagemonitor.app.sub2api`
+- Stores Base URL, email, selected subscription, and refresh interval in UserDefaults
+- Shows the selected active subscription's daily usage in the menu bar, for example `$84.04/$500.00`
+- Shows account balance, refresh status, active subscription details, weekly/monthly usage, expiry, and inactive subscription count in the popover
+- Preserves the last successful subscription list when refresh fails
 
 ## Requirements
 
-- **macOS 13 (Ventura)** or later
-- **Swift 5.9+** (included with Xcode 15+)
-- No external dependencies — uses only Apple frameworks
+- macOS 13 (Ventura) or later
+- Swift 5.9+ / Xcode 15+
+- A reachable sub2api instance
 
 ## Quick Start
 
 ```bash
-# Build
 swift build
-
-# Run
-swift run NetworkBadge
+swift run UsageMonitor
 ```
 
-The app will appear as a small icon + latency number in your menu bar. Click it to see full details.
+Open settings from the menu bar, enter the sub2api root URL, email, and password, then click `登录/验证`.
+
+## Configuration
+
+The Base URL must start with `http://` or `https://` and should be the instance root only. The app removes trailing slashes before saving and always builds API paths as:
+
+- `/api/v1/auth/login`
+- `/api/v1/subscriptions`
+
+Refresh intervals are limited to 1, 5, 15, 30, and 60 minutes. The default is 5 minutes.
 
 ## Build for Distribution
 
 ```bash
-# Build the .app bundle
 ./scripts/build-app.sh
-
-# Create a DMG for sharing
 ./scripts/create-dmg.sh
 ```
+
+Outputs:
+
+- `build/UsageMonitor.app`
+- `build/UsageMonitor.dmg`
 
 ## Run Tests
 
@@ -82,81 +54,29 @@ The app will appear as a small icon + latency number in your menu bar. Click it 
 swift test
 ```
 
-## How It Works
-
-| Component | Framework | Purpose |
-|-----------|-----------|---------|
-| Menu bar presence | SwiftUI `MenuBarExtra` | Shows icon + latency in the top bar |
-| Network detection | `NWPathMonitor` (Network) | Detects WiFi, Ethernet, USB tethering |
-| WiFi details | `CoreWLAN` | Reads SSID and signal info |
-| Latency measurement | `URLSession` | HTTP ping to Apple's captive portal server |
-| GPS tracking | `CLLocationManager` | Records location for quality mapping |
-| Location smoothing | Kalman filter | Cleans noisy GPS for accurate trails |
-| Quality storage | `sqlite3` (WAL mode) | Append-only database of GPS-tagged measurements |
-| Quality map | `MapKit` | Color-coded trail visualization |
-| Smart alerts | `UserNotifications` | Degradation, disconnect, and predictive warnings |
-
-### Why HTTP ping instead of ICMP?
-
-1. **Works through captive portals** (train WiFi login pages)
-2. **No root permissions** needed (ICMP requires elevated privileges)
-3. **Tests real internet**, not just local network connectivity
-4. Apple's server (`captive.apple.com`) is globally distributed and always available
+No unit test calls a real sub2api service. API behavior is tested through an injectable request loader.
 
 ## Project Structure
 
+```text
+Sources/UsageMonitor/
+├── UsageMonitorApp.swift
+├── Models/Sub2APIModels.swift
+├── Services/Sub2APIClient.swift
+├── Services/KeychainStore.swift
+├── Monitors/SubscriptionMonitor.swift
+├── Formatters/UsageFormatters.swift
+└── Views/
+    ├── MenuBarView.swift
+    ├── SettingsView.swift
+    └── SettingsWindowController.swift
+
+Tests/UsageMonitorTests/
+├── Sub2APIClientTests.swift
+├── Sub2APIModelsTests.swift
+└── UsageFormattersTests.swift
 ```
-Sources/NetworkBadge/
-├── NetworkBadgeApp.swift              # App entry point, MenuBarExtra
-├── Models/
-│   ├── ConnectionInfo.swift           # Data types: ConnectionType, LatencyQuality
-│   ├── QualityRecord.swift            # GPS-tagged quality measurement
-│   └── RunDetector.swift              # Groups records into journeys
-├── Monitors/
-│   ├── NetworkMonitor.swift           # NWPathMonitor + WiFi SSID reading
-│   ├── LatencyMonitor.swift           # HTTP latency measurement loop
-│   ├── LocationMonitor.swift          # GPS tracking + quality recording
-│   ├── LocationIntelligence.swift     # Kalman filtering, road snapping
-│   ├── GPS2IPSource.swift             # iPhone GPS over TCP (NMEA)
-│   ├── NotificationManager.swift      # Quality change alerts
-│   └── UpdateChecker.swift            # GitHub release polling
-├── Views/
-│   ├── MenuBarView.swift              # Main popover UI
-│   ├── SparklineView.swift            # Mini latency chart
-│   ├── QualityMapView.swift           # MapKit quality trail map
-│   ├── QualityTrailRenderer.swift     # Gradient polyline renderer
-│   ├── DataBrowserView.swift          # Record table + CSV export
-│   ├── SettingsView.swift             # App preferences
-│   ├── MapWindowController.swift      # Map window lifecycle
-│   ├── DataBrowserWindowController.swift
-│   └── SettingsWindowController.swift
-├── Storage/
-│   ├── QualityDatabase.swift          # Append-only SQLite database
-│   └── TileCache.swift                # Offline map tile cache
-└── Helpers/
-    ├── NetworkInterfaceHelper.swift   # Interface name → type detection
-    └── CoordinateUtils.swift          # Haversine distance/bearing math
-
-Tests/NetworkBadgeTests/               # 10 test files
-
-scripts/
-├── build-app.sh                       # Compile + create .app bundle
-├── create-dmg.sh                      # Package into .dmg for distribution
-└── install.sh                         # Build + install to /Applications
-```
-
-## Latency Quality Thresholds
-
-| Quality | Latency | What it means |
-|---------|---------|---------------|
-| Excellent | < 30ms | Fiber-like, everything works great |
-| Good | < 80ms | Normal browsing, video calls work |
-| Fair | < 150ms | Usable but feels sluggish |
-| Poor | < 300ms | Video calls will struggle |
-| Bad | > 300ms | Barely functional |
-
-These are tuned for typical European train WiFi and mobile hotspots.
 
 ## License
 
-Apache 2.0 — see [LICENSE.txt](LICENSE.txt)
+Apache 2.0 — see [LICENSE.txt](LICENSE.txt).
