@@ -8,7 +8,7 @@ struct MenuBarView: View {
         VStack(alignment: .leading, spacing: 14) {
             header
 
-            if let snapshot = monitor.snapshot {
+            if let snapshot = monitor.snapshot, monitor.canShowSnapshotData {
                 usageSnapshot(snapshot)
             } else {
                 Text(emptyStateText)
@@ -16,10 +16,8 @@ struct MenuBarView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            if let error = monitor.lastError {
-                Text(error)
-                    .font(.caption)
-                    .foregroundColor(.orange)
+            if !monitor.alertMessages.isEmpty {
+                alertSection
             }
         }
         .padding(16)
@@ -37,6 +35,15 @@ struct MenuBarView: View {
                 Text(refreshText)
                     .font(.caption)
                     .foregroundColor(.secondary)
+                Text(monitor.statusLineText)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                if let detail = monitor.statusDetailText {
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             Spacer()
@@ -75,16 +82,27 @@ struct MenuBarView: View {
     }
 
     private var emptyStateText: String {
-        switch monitor.authState {
-        case .notConfigured, .ready:
-            return "未配置"
-        case .authenticated:
-            return "尚未获取用量"
-        case .unauthorized:
-            return "未授权"
-        case .error:
-            return monitor.lastError == nil ? "刷新失败" : "暂无可用缓存"
+        monitor.statusLineText
+    }
+
+    private var alertSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("提醒")
+                .font(.caption.bold())
+            ForEach(Array(monitor.alertMessages.enumerated()), id: \.offset) { _, message in
+                Text(message)
+                    .font(.caption)
+                    .foregroundColor(alertColor)
+            }
         }
+    }
+
+    private var alertColor: Color {
+        if let alert = monitor.thresholdAlertState,
+           alert.kinds.contains(.dailyUsage95) || alert.kinds.contains(.subscriptionExpired) {
+            return .red
+        }
+        return .orange
     }
 
     private func usageSnapshot(_ snapshot: UsageResponse) -> some View {

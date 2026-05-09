@@ -1,6 +1,6 @@
 import Foundation
 
-struct UsageResponse: Decodable, Equatable {
+struct UsageResponse: Codable, Equatable {
     let isValid: Bool
     let mode: String
     let modelStats: [UsageModelStat]
@@ -53,9 +53,21 @@ struct UsageResponse: Decodable, Equatable {
         unit = try container.decode(String.self, forKey: .unit)
         usage = try container.decode(UsageUsageSummary.self, forKey: .usage)
     }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(isValid, forKey: .isValid)
+        try container.encode(mode, forKey: .mode)
+        try container.encode(modelStats, forKey: .modelStats)
+        try container.encode(planName, forKey: .planNameSnake)
+        try container.encode(remaining, forKey: .remaining)
+        try container.encode(subscription, forKey: .subscription)
+        try container.encode(unit, forKey: .unit)
+        try container.encode(usage, forKey: .usage)
+    }
 }
 
-struct UsageModelStat: Decodable, Equatable {
+struct UsageModelStat: Codable, Equatable {
     let modelName: String
     let requestCount: Int
     let inputTokens: Int
@@ -124,9 +136,21 @@ struct UsageModelStat: Decodable, Equatable {
             default: inputCostUSD + outputCostUSD
         )
     }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(modelName, forKey: .modelName)
+        try container.encode(requestCount, forKey: .requestCount)
+        try container.encode(inputTokens, forKey: .inputTokens)
+        try container.encode(outputTokens, forKey: .outputTokens)
+        try container.encode(totalTokens, forKey: .totalTokens)
+        try container.encode(inputCostUSD, forKey: .inputCostUSD)
+        try container.encode(outputCostUSD, forKey: .outputCostUSD)
+        try container.encode(totalCostUSD, forKey: .totalCostUSD)
+    }
 }
 
-struct UsageSubscription: Decodable, Equatable {
+struct UsageSubscription: Codable, Equatable {
     let dailyUsageUSD: Double
     let dailyLimitUSD: Double
     let weeklyUsageUSD: Double
@@ -177,9 +201,20 @@ struct UsageSubscription: Decodable, Equatable {
             expiresAt = nil
         }
     }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(dailyUsageUSD, forKey: .dailyUsageUSD)
+        try container.encode(dailyLimitUSD, forKey: .dailyLimitUSD)
+        try container.encode(weeklyUsageUSD, forKey: .weeklyUsageUSD)
+        try container.encode(weeklyLimitUSD, forKey: .weeklyLimitUSD)
+        try container.encode(monthlyUsageUSD, forKey: .monthlyUsageUSD)
+        try container.encode(monthlyLimitUSD, forKey: .monthlyLimitUSD)
+        try container.encodeIfPresent(expiresAt, forKey: .expiresAt)
+    }
 }
 
-struct UsageUsageSummary: Decodable, Equatable {
+struct UsageUsageSummary: Codable, Equatable {
     let today: UsageUsageBucket
     let total: UsageUsageBucket
     let averageDurationMS: Double
@@ -216,9 +251,18 @@ struct UsageUsageSummary: Decodable, Equatable {
         rpm = try container.decodeFlexibleDouble(forKey: .rpm)
         tpm = try container.decodeFlexibleDouble(forKey: .tpm)
     }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(today, forKey: .today)
+        try container.encode(total, forKey: .total)
+        try container.encode(averageDurationMS, forKey: .averageDurationMS)
+        try container.encode(rpm, forKey: .rpm)
+        try container.encode(tpm, forKey: .tpm)
+    }
 }
 
-struct UsageUsageBucket: Decodable, Equatable {
+struct UsageUsageBucket: Codable, Equatable {
     let requestCount: Int
     let inputTokens: Int
     let outputTokens: Int
@@ -291,6 +335,17 @@ struct UsageUsageBucket: Decodable, Equatable {
             default: inputCostUSD + outputCostUSD
         )
     }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(requestCount, forKey: .requestCount)
+        try container.encode(inputTokens, forKey: .inputTokens)
+        try container.encode(outputTokens, forKey: .outputTokens)
+        try container.encode(totalTokens, forKey: .totalTokens)
+        try container.encode(inputCostUSD, forKey: .inputCostUSD)
+        try container.encode(outputCostUSD, forKey: .outputCostUSD)
+        try container.encode(totalCostUSD, forKey: .totalCostUSD)
+    }
 }
 
 extension JSONDecoder {
@@ -308,6 +363,19 @@ extension JSONDecoder {
             return date
         }
         return decoder
+    }
+}
+
+extension JSONEncoder {
+    static var sub2api: JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .custom { date, encoder in
+            var container = encoder.singleValueContainer()
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            try container.encode(formatter.string(from: date))
+        }
+        return encoder
     }
 }
 

@@ -151,13 +151,73 @@ final class RequestRecordingLoader: Sub2APIRequestLoading {
 
 final class ManualTimerFactory: RefreshTimerFactory {
     private(set) var scheduledIntervals: [TimeInterval] = []
+    private(set) var timers: [ManualRefreshTimer] = []
 
     func schedule(interval: TimeInterval, action: @escaping @Sendable () -> Void) -> RefreshTimer {
         scheduledIntervals.append(interval)
-        return ManualRefreshTimer()
+        let timer = ManualRefreshTimer(action: action)
+        timers.append(timer)
+        return timer
     }
 }
 
 final class ManualRefreshTimer: RefreshTimer {
-    func invalidate() {}
+    private let action: @Sendable () -> Void
+    private(set) var isInvalidated = false
+
+    init(action: @escaping @Sendable () -> Void = {}) {
+        self.action = action
+    }
+
+    func invalidate() {
+        isInvalidated = true
+    }
+
+    func fire() {
+        guard !isInvalidated else { return }
+        action()
+    }
+}
+
+actor BlockingRequestLoader: Sub2APIRequestLoading {
+    struct Response {
+        var statusCode: Int
+        var body: String
+    }
+
+    private var requests: [URLRequest] = []
+    private var continuation: CheckedContinuation<(Data, URLResponse), Error>?
+
+    func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+        requests.append(request)
+        return try await withCheckedThrowingContinuation { continuation in
+            self.continuation = continuation
+        }
+    }
+
+    func requestCount() -> Int {
+        requests.count
+    }
+
+    func lastRequest() -> URLRequest? {
+        requests.last
+    }
+
+    func resume(statusCode: Int = 200, body: String) {
+        guard let request = requests.last, let continuation else { return }
+        self.continuation = nil
+        let response = HTTPURLResponse(
+            url: request.url!,
+            statusCode: statusCode,
+            httpVersion: nil,
+            headerFields: nil
+        )!
+        continuation.resume(returning: (Data(body.utf8), response))
+    }
+
+    func fail(_ error: Error) {
+        guard let continuation else { return }
+        self.continuation = nil
+        continuation.resume(throwing: error)
+    }
 }

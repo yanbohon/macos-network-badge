@@ -14,7 +14,7 @@ struct UsageMonitorApp: App {
         } label: {
             MenuBarTitleView(
                 text: monitor.menuBarText,
-                color: monitor.healthState.swiftUIColor
+                color: monitor.menuBarColor
             )
                 .onAppear {
                     monitor.start()
