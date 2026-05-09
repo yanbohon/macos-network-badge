@@ -2,6 +2,9 @@ import AppKit
 import SwiftUI
 
 final class SettingsWindowController: ObservableObject {
+    static let initialContentSize = NSSize(width: 500, height: 560)
+    static let minimumContentSize = NSSize(width: 420, height: 400)
+
     private var window: NSWindow?
     private let activateApplication: () -> Void
 
@@ -26,14 +29,15 @@ final class SettingsWindowController: ObservableObject {
         let view = SettingsView(monitor: monitor)
         let hostingController = NSHostingController(rootView: view)
         let newWindow = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 460, height: 360),
+            contentRect: NSRect(origin: .zero, size: Self.initialContentSize),
             styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
         )
         newWindow.title = "用量监控"
         newWindow.contentViewController = hostingController
-        newWindow.contentMinSize = NSSize(width: 420, height: 320)
+        newWindow.contentMinSize = Self.minimumContentSize
+        newWindow.setContentSize(Self.initialContentSize)
         newWindow.isReleasedWhenClosed = false
         newWindow.initialFirstResponder = hostingController.view
         newWindow.center()

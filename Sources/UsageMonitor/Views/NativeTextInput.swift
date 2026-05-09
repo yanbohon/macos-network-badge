@@ -68,7 +68,9 @@ final class NativeTextInputCoordinator: NSObject, NSTextFieldDelegate {
         guard !didRequestInitialFocus else { return }
         didRequestInitialFocus = true
         DispatchQueue.main.async { [weak textField] in
-            textField?.selectText(nil)
+            guard let textField else { return }
+            textField.selectText(nil)
+            textField.window?.makeFirstResponder(textField)
         }
     }
 
