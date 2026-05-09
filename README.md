@@ -8,7 +8,7 @@
 - Calls `POST /api/v1/auth/login` and `GET /api/v1/subscriptions`
 - Stores password and token data in macOS Keychain under `com.usagemonitor.app.sub2api`
 - Stores Base URL, email, selected subscription, and refresh interval in UserDefaults
-- Shows the selected active subscription's daily usage in the menu bar, stacked as `$84.04` over `$500.00`
+- Shows the selected active subscription's daily usage in the menu bar, stacked as `$84.04` over `$500.00`, with an option to hide decimal places in settings
 - Shows account balance, refresh status, active subscription details, weekly/monthly usage, expiry, and inactive subscription count in the popover
 - Preserves the last successful subscription list when refresh fails
 
@@ -25,7 +25,7 @@ swift build
 swift run UsageMonitor
 ```
 
-Open settings from the menu bar, enter the sub2api root URL, email, and password, then click `登录/验证`.
+Open settings from the menu bar, enter the sub2api root URL, email, and password, then click `登录/验证`. The display section also lets you choose whether the menu bar shows decimal places.
 
 If the instance requires Cloudflare Turnstile, enter the Base URL and click `网页登录`. The app opens the real sub2api site in a `WKWebView`, lets the page complete Turnstile normally, captures the successful `/api/v1/auth/login` response when available, and stores the resulting token in Keychain.
 

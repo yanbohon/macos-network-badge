@@ -11,6 +11,10 @@ enum UsageFormatters {
         "$" + String(format: "%.2f", amount)
     }
 
+    static func truncatedCurrency(_ amount: Double) -> String {
+        "$" + String(Int(amount))
+    }
+
     static func dailyUsageText(used: Double, limit: Double) -> String {
         if limit == 0 {
             return "\(currency(used))/∞"
@@ -18,11 +22,12 @@ enum UsageFormatters {
         return "\(currency(used))/\(currency(limit))"
     }
 
-    static func compactDailyUsageText(used: Double, limit: Double) -> String {
+    static func compactDailyUsageText(used: Double, limit: Double, showDecimals: Bool = true) -> String {
+        let format = showDecimals ? currency : truncatedCurrency
         if limit == 0 {
-            return "\(currency(used))\n∞"
+            return "\(format(used))\n∞"
         }
-        return "\(currency(used))\n\(currency(limit))"
+        return "\(format(used))\n\(format(limit))"
     }
 
     static func percentage(used: Double, limit: Double) -> Double? {

@@ -183,8 +183,9 @@ Refresh-token handling:
 Menu bar:
 
 - Shows only the selected subscription.
-- Format: `$84.04/$500.00`.
-- If `daily_limit_usd == 0`, show `$84.04/∞`.
+- Default format: `$84.04/$500.00`.
+- If the user disables decimal display in settings, truncate both values to integers, for example `$84/$500`.
+- If `daily_limit_usd == 0`, show `$84.04/∞` by default and `$84/∞` when decimals are hidden.
 - If no configuration exists, show `未配置`.
 - If credentials are missing or invalid, show `未登录`.
 - If there are no active subscriptions, show `无套餐`.
@@ -209,7 +210,7 @@ Popover:
 Settings:
 
 - Account section: Base URL, email, password, security note, `登录/验证` button, validation status.
-- Display section: active subscription picker for the menu-bar subscription.
+- Display section: active subscription picker for the menu-bar subscription and a toggle for menu-bar decimal display.
 - Refresh section: interval picker and manual refresh.
 
 ## Error Handling

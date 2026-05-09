@@ -52,6 +52,7 @@ struct SettingsView: View {
                             .tag(subscription.id)
                     }
                 }
+                Toggle("菜单栏显示小数点", isOn: $monitor.showMenuBarDecimals)
             }
 
             Section("刷新") {

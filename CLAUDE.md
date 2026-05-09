@@ -47,6 +47,7 @@ UserDefaults:
 - Email
 - Selected menu-bar subscription ID
 - Refresh interval
+- Menu-bar decimal display toggle
 
 Keychain service `com.usagemonitor.app.sub2api`:
 

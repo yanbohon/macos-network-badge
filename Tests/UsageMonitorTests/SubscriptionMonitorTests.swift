@@ -157,6 +157,54 @@ final class SubscriptionMonitorTests: XCTestCase {
         XCTAssertEqual(monitor.lastError, "server down")
     }
 
+    func testMenuBarTextCanHideDecimalPlacesWhenConfigured() async throws {
+        let defaults = UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!
+        let loader = RequestRecordingLoader()
+        loader.responses = [
+            .init(statusCode: 200, body: Sub2APIClientTests.loginBody(token: "token")),
+            .init(statusCode: 200, body: Sub2APIClientTests.oneSubscriptionBody(id: "cached", used: 84.99)),
+        ]
+        let monitor = SubscriptionMonitor(
+            userDefaults: defaults,
+            secretStore: InMemorySecretStore(),
+            client: Sub2APIClient(requestLoader: loader),
+            timerFactory: ManualTimerFactory()
+        )
+
+        monitor.updateBaseURL("https://sub.example.com")
+        monitor.updateEmail("user@example.com")
+        monitor.updatePassword("secret")
+        try await monitor.loginAndRefresh()
+
+        monitor.showMenuBarDecimals = false
+
+        XCTAssertEqual(monitor.menuBarText, "$84\n$100")
+    }
+
+    func testMenuBarDecimalPreferenceDefaultsToTrueAndPersists() {
+        let defaults = UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!
+        let firstMonitor = SubscriptionMonitor(
+            userDefaults: defaults,
+            secretStore: InMemorySecretStore(),
+            client: Sub2APIClient(requestLoader: RequestRecordingLoader()),
+            timerFactory: ManualTimerFactory()
+        )
+
+        XCTAssertTrue(firstMonitor.showMenuBarDecimals)
+
+        firstMonitor.showMenuBarDecimals = false
+
+        let secondMonitor = SubscriptionMonitor(
+            userDefaults: defaults,
+            secretStore: InMemorySecretStore(),
+            client: Sub2APIClient(requestLoader: RequestRecordingLoader()),
+            timerFactory: ManualTimerFactory()
+        )
+
+        XCTAssertFalse(secondMonitor.showMenuBarDecimals)
+        XCTAssertEqual(defaults.object(forKey: SubscriptionMonitor.DefaultsKey.showMenuBarDecimals) as? Bool, false)
+    }
+
     func testSuccessfulVerificationWithoutRefreshTokenDeletesOldRefreshToken() async throws {
         let defaults = UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!
         let keychain = InMemorySecretStore()

@@ -36,6 +36,7 @@ final class SubscriptionMonitor: ObservableObject {
         static let email = "sub2api.email"
         static let selectedSubscriptionID = "sub2api.selectedSubscriptionID"
         static let refreshIntervalMinutes = "sub2api.refreshIntervalMinutes"
+        static let showMenuBarDecimals = "sub2api.showMenuBarDecimals"
     }
 
     static let allowedRefreshIntervals = [1, 5, 15, 30, 60]
@@ -57,6 +58,11 @@ final class SubscriptionMonitor: ObservableObject {
             }
             userDefaults.set(refreshIntervalMinutes, forKey: DefaultsKey.refreshIntervalMinutes)
             scheduleTimer()
+        }
+    }
+    @Published var showMenuBarDecimals: Bool {
+        didSet {
+            userDefaults.set(showMenuBarDecimals, forKey: DefaultsKey.showMenuBarDecimals)
         }
     }
     @Published private(set) var user: Sub2APIUser?
@@ -91,6 +97,7 @@ final class SubscriptionMonitor: ObservableObject {
         refreshIntervalMinutes = Self.allowedRefreshIntervals.contains(savedInterval)
             ? savedInterval
             : Self.defaultRefreshInterval
+        showMenuBarDecimals = userDefaults.object(forKey: DefaultsKey.showMenuBarDecimals) as? Bool ?? true
         let passwordReadResult = Result { try secretStore.read(.password) }
         password = (try? passwordReadResult.get()) ?? ""
         secretReadCache[.password] = passwordReadResult
@@ -120,7 +127,8 @@ final class SubscriptionMonitor: ObservableObject {
         if let selectedSubscription {
             return UsageFormatters.compactDailyUsageText(
                 used: selectedSubscription.usedTodayUSD,
-                limit: selectedSubscription.group.dailyLimitUSD
+                limit: selectedSubscription.group.dailyLimitUSD,
+                showDecimals: showMenuBarDecimals
             )
         }
         if lastError != nil && lastSuccessfulRefresh == nil {
