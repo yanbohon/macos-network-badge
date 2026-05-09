@@ -51,6 +51,19 @@ final class Sub2APIModelsTests: XCTestCase {
         XCTAssertEqual(response.data[1].status, "expired")
     }
 
+    func testSubscriptionsResponseParsesLiveSub2APIFieldNames() throws {
+        let response = try decoder.decode(
+            Sub2APISubscriptionsEnvelope.self,
+            from: Data(Self.liveShapeSubscriptionsJSON.utf8)
+        )
+
+        XCTAssertEqual(response.data[0].id, "3182")
+        XCTAssertEqual(response.data[0].usedTodayUSD, 84.04)
+        XCTAssertEqual(response.data[0].usedWeekUSD, 120.5)
+        XCTAssertEqual(response.data[0].usedMonthUSD, 300.25)
+        XCTAssertEqual(response.data[0].group.dailyLimitUSD, 500)
+    }
+
     func testActiveFilteringAndInactiveCount() throws {
         let response = try decoder.decode(
             Sub2APISubscriptionsEnvelope.self,
@@ -123,6 +136,38 @@ final class Sub2APIModelsTests: XCTestCase {
             "daily_limit_usd": 0,
             "weekly_limit_usd": 0,
             "monthly_limit_usd": 0
+          }
+        }
+      ]
+    }
+    """
+
+    static let liveShapeSubscriptionsJSON = """
+    {
+      "code": 0,
+      "message": "success",
+      "data": [
+        {
+          "id": 3182,
+          "user_id": 2964,
+          "group_id": 12,
+          "starts_at": "2026-05-01T00:00:00.000Z",
+          "expires_at": "2026-06-01T12:00:00.000Z",
+          "status": "active",
+          "daily_usage_usd": 84.04,
+          "weekly_usage_usd": 120.5,
+          "monthly_usage_usd": 300.25,
+          "created_at": "2026-05-01T00:00:00.000Z",
+          "updated_at": "2026-05-09T00:00:00.000Z",
+          "group": {
+            "id": 12,
+            "name": "Pro",
+            "description": "Plan",
+            "platform": "openai",
+            "daily_limit_usd": 500,
+            "weekly_limit_usd": 2500,
+            "monthly_limit_usd": 10000,
+            "status": "active"
           }
         }
       ]

@@ -54,20 +54,23 @@ struct Sub2APISubscription: Decodable, Equatable, Identifiable {
         case usedTodayUSD = "used_today_usd"
         case usedWeekUSD = "used_week_usd"
         case usedMonthUSD = "used_month_usd"
+        case dailyUsageUSD = "daily_usage_usd"
+        case weeklyUsageUSD = "weekly_usage_usd"
+        case monthlyUsageUSD = "monthly_usage_usd"
         case expiresAt = "expires_at"
         case group
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decode(String.self, forKey: .id)
+        id = try container.decodeFlexibleString(forKey: .id)
         status = try container.decode(String.self, forKey: .status)
-        usedTodayUSD = try container.decode(Double.self, forKey: .usedTodayUSD)
-        usedWeekUSD = try container.decode(Double.self, forKey: .usedWeekUSD)
-        usedMonthUSD = try container.decode(Double.self, forKey: .usedMonthUSD)
+        usedTodayUSD = try container.decodeFlexibleDouble(forKeys: [.usedTodayUSD, .dailyUsageUSD])
+        usedWeekUSD = try container.decodeFlexibleDouble(forKeys: [.usedWeekUSD, .weeklyUsageUSD])
+        usedMonthUSD = try container.decodeFlexibleDouble(forKeys: [.usedMonthUSD, .monthlyUsageUSD])
         group = try container.decode(Sub2APIGroup.self, forKey: .group)
         if let rawDate = try container.decodeIfPresent(String.self, forKey: .expiresAt) {
-            expiresAt = ISO8601DateFormatter().date(from: rawDate)
+            expiresAt = DateParsers.iso8601(rawDate)
         } else {
             expiresAt = nil
         }
@@ -118,5 +121,47 @@ extension JSONDecoder {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return decoder
+    }
+}
+
+private enum DateParsers {
+    static func iso8601(_ value: String) -> Date? {
+        if let date = ISO8601DateFormatter().date(from: value) {
+            return date
+        }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: value)
+    }
+}
+
+private extension KeyedDecodingContainer {
+    func decodeFlexibleString(forKey key: Key) throws -> String {
+        if let value = try? decode(String.self, forKey: key) {
+            return value
+        }
+        if let value = try? decode(Int.self, forKey: key) {
+            return String(value)
+        }
+        if let value = try? decode(Double.self, forKey: key) {
+            return String(value)
+        }
+        return try decode(String.self, forKey: key)
+    }
+
+    func decodeFlexibleDouble(forKeys keys: [Key]) throws -> Double {
+        for key in keys {
+            if let value = try? decode(Double.self, forKey: key) {
+                return value
+            }
+            if let value = try? decode(Int.self, forKey: key) {
+                return Double(value)
+            }
+            if let value = try? decode(String.self, forKey: key),
+               let double = Double(value) {
+                return double
+            }
+        }
+        return try decode(Double.self, forKey: keys[0])
     }
 }
