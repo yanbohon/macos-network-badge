@@ -2,7 +2,7 @@ import SwiftUI
 
 @main
 struct UsageMonitorApp: App {
-    @StateObject private var monitor = SubscriptionMonitor()
+    @StateObject private var monitor = UsageSnapshotMonitor()
     @StateObject private var settingsWindowController = SettingsWindowController()
 
     var body: some Scene {
@@ -14,13 +14,16 @@ struct UsageMonitorApp: App {
         } label: {
             MenuBarTitleView(
                 text: monitor.menuBarText,
-                color: monitor.selectedHealthState.swiftUIColor
+                color: monitor.healthState.swiftUIColor
             )
                 .onAppear {
                     monitor.start()
                 }
         }
         .menuBarExtraStyle(.window)
+        .commands {
+            TextEditingCommands()
+        }
     }
 }
 

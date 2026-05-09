@@ -9,29 +9,21 @@ extension URLSession: Sub2APIRequestLoading {}
 enum Sub2APIClientError: Error, Equatable {
     case invalidResponse
     case httpStatus(Int, String?)
-    case apiMessage(String)
-    case missingAccessToken
+    case authorizationFailure
     case decoding
     case network(String)
 
     var userMessage: String {
         switch self {
-        case .invalidResponse:
+        case .invalidResponse, .decoding:
             return "响应格式不符合预期"
         case let .httpStatus(status, message):
             if let message, !message.isEmpty {
                 return message
             }
-            if status == 401 || status == 403 {
-                return "登录已失效，请重新验证"
-            }
             return "HTTP \(status)"
-        case let .apiMessage(message):
-            return message
-        case .missingAccessToken:
-            return "响应格式不符合预期"
-        case .decoding:
-            return "响应格式不符合预期"
+        case .authorizationFailure:
+            return "API Key 无效，请检查后重试"
         case .network:
             return "网络请求失败"
         }
@@ -39,10 +31,12 @@ enum Sub2APIClientError: Error, Equatable {
 
     var isUnauthorized: Bool {
         switch self {
+        case .authorizationFailure:
+            return true
         case let .httpStatus(status, _):
-            status == 401 || status == 403
+            return status == 401 || status == 403
         default:
-            false
+            return false
         }
     }
 }
@@ -55,37 +49,17 @@ final class Sub2APIClient {
         self.requestLoader = requestLoader
     }
 
-    func login(baseURL: URL, email: String, password: String) async throws -> Sub2APILoginData {
-        var request = URLRequest(url: apiURL(baseURL: baseURL, path: "/api/v1/auth/login"))
-        request.httpMethod = "POST"
-        request.timeoutInterval = 20
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: [
-            "email": email,
-            "password": password,
-        ])
-
-        let envelope: Sub2APILoginEnvelope = try await load(request)
-        guard envelope.code == 0 else {
-            throw Sub2APIClientError.apiMessage(envelope.message ?? "登录失败")
-        }
-        guard let data = envelope.data, !data.accessToken.isEmpty else {
-            throw Sub2APIClientError.missingAccessToken
-        }
-        return data
-    }
-
-    func subscriptions(baseURL: URL, accessToken: String) async throws -> [Sub2APISubscription] {
-        var request = URLRequest(url: apiURL(baseURL: baseURL, path: "/api/v1/subscriptions"))
+    func usage(baseURL: URL, apiKey: String) async throws -> UsageResponse {
+        var request = URLRequest(url: apiURL(baseURL: baseURL, path: "/v1/usage"))
         request.httpMethod = "GET"
         request.timeoutInterval = 20
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
 
-        let envelope: Sub2APISubscriptionsEnvelope = try await load(request)
-        guard envelope.code == 0 else {
-            throw Sub2APIClientError.apiMessage(envelope.message ?? "刷新失败")
+        let response: UsageResponse = try await load(request)
+        guard response.isValid else {
+            throw Sub2APIClientError.authorizationFailure
         }
-        return envelope.data
+        return response
     }
 
     private func load<T: Decodable>(_ request: URLRequest) async throws -> T {
@@ -101,6 +75,10 @@ final class Sub2APIClient {
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw Sub2APIClientError.invalidResponse
+        }
+
+        if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+            throw Sub2APIClientError.authorizationFailure
         }
 
         guard (200..<300).contains(httpResponse.statusCode) else {

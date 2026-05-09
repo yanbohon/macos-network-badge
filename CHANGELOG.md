@@ -6,6 +6,31 @@ All notable changes to 用量监控 are documented here.
 
 ### Changed
 
+- Replaced the account-login subscription monitor with a Base URL + API Key usage monitor.
+- Menu bar now shows `subscription.daily_usage_usd` from `GET /v1/usage`.
+- Popover now shows remaining balance, plan, mode, subscription limits, usage summary, and model stats from the usage snapshot.
+- Settings now contains only connection, display, and refresh controls for Base URL, API Key, decimal display, and refresh interval.
+- API Key storage now uses UserDefaults instead of Keychain to avoid macOS password prompts during normal use.
+
+### Added
+
+- API-key usage client for `GET /v1/usage` with `Authorization: Bearer <apiKey>`.
+- UserDefaults-backed storage for Base URL, API Key, refresh interval, and decimal preference.
+- In-memory preservation of the last successful usage snapshot when refresh fails.
+- Migration cleanup for old password, access token, refresh token, token expiry, email, and selected-subscription storage.
+- Unit tests for request construction, response decoding, invalid key handling, formatting, refresh state preservation, and API Key persistence.
+
+### Removed
+
+- Email/password login.
+- Web login and WebKit token extraction.
+- Subscription picker and selected-subscription flow.
+- Runtime Keychain access for API Key storage.
+
+## [1.9.0] — 2026-05-09
+
+### Changed
+
 - Refactored the app from a network latency monitor into a dedicated sub2api subscription usage monitor.
 - Renamed the Swift package, executable target, source tree, test target, app metadata, and build artifacts to `UsageMonitor`.
 - Menu bar now shows selected subscription daily usage instead of network latency.

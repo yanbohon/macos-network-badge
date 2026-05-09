@@ -1,40 +1,35 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @ObservedObject var monitor: SubscriptionMonitor
-    @StateObject private var webLoginWindowController = WebLoginWindowController()
-    @State private var baseURL: String
-    @State private var email: String
-    @State private var password: String
+    @ObservedObject var monitor: UsageSnapshotMonitor
+    @State private var draft: SettingsDraft
     @State private var validationStatus: String?
 
-    init(monitor: SubscriptionMonitor) {
+    init(monitor: UsageSnapshotMonitor) {
         self.monitor = monitor
-        _baseURL = State(initialValue: monitor.baseURLText)
-        _email = State(initialValue: monitor.email)
-        _password = State(initialValue: monitor.password)
+        _draft = State(initialValue: SettingsDraft(baseURL: monitor.baseURLText, apiKey: monitor.apiKey))
     }
 
     var body: some View {
         Form {
-            Section("账号") {
-                TextField("Base URL", text: $baseURL)
-                    .textFieldStyle(.roundedBorder)
-                TextField("邮箱", text: $email)
-                    .textFieldStyle(.roundedBorder)
-                SecureField("密码", text: $password)
-                    .textFieldStyle(.roundedBorder)
-                Text("密码和 token 存储在 macOS Keychain 中。")
+            Section("连接") {
+                NativeTextInput(
+                    placeholder: "Base URL",
+                    text: $draft.baseURL,
+                    autoFocus: true
+                )
+                NativeTextInput(
+                    placeholder: "API Key",
+                    text: $draft.apiKey,
+                    secure: true
+                )
+                Text("API Key 保存在本机应用偏好设置中。")
                     .font(.caption)
                     .foregroundColor(.secondary)
-                Button("登录/验证") {
-                    Task { await login() }
+                Button("验证并刷新") {
+                    Task { await validateAndRefresh() }
                 }
                 .disabled(monitor.isRefreshing)
-                Button("网页登录") {
-                    openWebLogin()
-                }
-                .disabled(baseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 if let validationStatus {
                     Text(validationStatus)
                         .font(.caption)
@@ -43,51 +38,41 @@ struct SettingsView: View {
             }
 
             Section("显示") {
-                Picker("菜单栏套餐", selection: Binding(
-                    get: { monitor.selectedSubscriptionID ?? "" },
-                    set: { monitor.setSelectedSubscription($0) }
-                )) {
-                    ForEach(monitor.activeSubscriptions) { subscription in
-                        Text("\(subscription.group.name) · \(subscription.group.platform)")
-                            .tag(subscription.id)
-                    }
-                }
                 Toggle("菜单栏显示小数点", isOn: $monitor.showMenuBarDecimals)
             }
 
             Section("刷新") {
                 Picker("刷新间隔", selection: $monitor.refreshIntervalMinutes) {
-                    ForEach(SubscriptionMonitor.allowedRefreshIntervals, id: \.self) { minutes in
+                    ForEach(UsageSnapshotMonitor.allowedRefreshIntervals, id: \.self) { minutes in
                         Text("\(minutes) 分钟").tag(minutes)
                     }
                 }
                 Button("手动刷新") {
+                    commitDraft()
                     Task { await monitor.refreshNow() }
                 }
+                .disabled(monitor.isRefreshing)
             }
         }
         .padding(20)
         .frame(width: 420)
         .navigationTitle("用量监控")
+        .onDisappear {
+            commitDraft()
+        }
     }
 
-    private func login() async {
-        monitor.updateBaseURL(baseURL)
-        monitor.updateEmail(email)
-        monitor.updatePassword(password)
+    private func validateAndRefresh() async {
+        commitDraft()
         do {
-            try await monitor.loginAndRefresh()
+            try await monitor.validateAndRefresh()
             validationStatus = "验证成功"
         } catch {
             validationStatus = monitor.lastError ?? "验证失败"
         }
     }
 
-    private func openWebLogin() {
-        monitor.updateBaseURL(baseURL)
-        if !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            monitor.updateEmail(email)
-        }
-        webLoginWindowController.showWindow(monitor: monitor)
+    private func commitDraft() {
+        draft.commit(to: monitor)
     }
 }

@@ -2,142 +2,125 @@ import XCTest
 @testable import UsageMonitor
 
 final class Sub2APIClientTests: XCTestCase {
-    func testLoginSendsExpectedPathAndJSONBody() async throws {
+    func testUsageSendsExpectedPathAndAuthorizationHeader() async throws {
         let loader = RequestRecordingLoader()
         loader.responses = [
-            .init(
-                statusCode: 200,
-                body: """
-                {"code":0,"message":"success","data":{"access_token":"token","refresh_token":"rt","expires_in":3600,"token_type":"Bearer","user":{"id":1,"email":"user@example.com","balance":336,"status":"active"}}}
-                """
-            ),
+            .init(statusCode: 200, body: Sub2APIModelsTests.sampleUsageJSON),
         ]
         let client = Sub2APIClient(requestLoader: loader)
 
-        let login = try await client.login(
-            baseURL: URL(string: "https://sub.example.com")!,
-            email: "user@example.com",
-            password: "secret"
-        )
-
-        XCTAssertEqual(login.accessToken, "token")
-        XCTAssertEqual(loader.requests.count, 1)
-        XCTAssertEqual(loader.requests[0].url?.absoluteString, "https://sub.example.com/api/v1/auth/login")
-        XCTAssertEqual(loader.requests[0].httpMethod, "POST")
-        XCTAssertEqual(loader.requests[0].value(forHTTPHeaderField: "Content-Type"), "application/json")
-        let body = try XCTUnwrap(loader.requests[0].httpBody)
-        let json = try JSONSerialization.jsonObject(with: body) as? [String: String]
-        XCTAssertEqual(json?["email"], "user@example.com")
-        XCTAssertEqual(json?["password"], "secret")
-    }
-
-    func testSubscriptionsSendsExpectedPathAndAuthorizationHeader() async throws {
-        let loader = RequestRecordingLoader()
-        loader.responses = [
-            .init(statusCode: 200, body: #"{"code":0,"message":"success","data":[]}"#),
-        ]
-        let client = Sub2APIClient(requestLoader: loader)
-
-        _ = try await client.subscriptions(
+        let response = try await client.usage(
             baseURL: URL(string: "https://sub.example.com/root/")!,
-            accessToken: "abc123"
+            apiKey: "key_123"
         )
 
-        XCTAssertEqual(loader.requests[0].url?.absoluteString, "https://sub.example.com/root/api/v1/subscriptions")
+        XCTAssertEqual(response.planName, "Pro")
+        XCTAssertEqual(loader.requests.count, 1)
+        XCTAssertEqual(loader.requests[0].url?.absoluteString, "https://sub.example.com/root/v1/usage")
         XCTAssertEqual(loader.requests[0].httpMethod, "GET")
-        XCTAssertEqual(loader.requests[0].value(forHTTPHeaderField: "Authorization"), "Bearer abc123")
+        XCTAssertEqual(loader.requests[0].value(forHTTPHeaderField: "Authorization"), "Bearer key_123")
     }
 
-    func testLoginRequiresSuccessfulEnvelopeWithAccessToken() async throws {
+    func testUsageTreatsIsValidFalseAsAuthorizationFailure() async throws {
         let loader = RequestRecordingLoader()
         loader.responses = [
-            .init(statusCode: 200, body: #"{"code":42,"message":"bad credentials","data":null}"#),
+            .init(statusCode: 200, body: Self.invalidUsageJSON),
         ]
         let client = Sub2APIClient(requestLoader: loader)
 
         do {
-            _ = try await client.login(
+            _ = try await client.usage(
                 baseURL: URL(string: "https://sub.example.com")!,
-                email: "user@example.com",
-                password: "wrong"
+                apiKey: "bad"
             )
-            XCTFail("Expected login failure")
+            XCTFail("Expected invalid key failure")
         } catch let error as Sub2APIClientError {
-            XCTAssertEqual(error.userMessage, "bad credentials")
+            XCTAssertTrue(error.isUnauthorized)
+            XCTAssertEqual(error.userMessage, "API Key 无效，请检查后重试")
         }
     }
 
-    func testSubscriptionsDecodingFailureUsesExpectedUserMessage() async throws {
+    func testHTTPAuthorizationStatusUsesInvalidAPIKeyMessage() async throws {
         let loader = RequestRecordingLoader()
         loader.responses = [
-            .init(statusCode: 200, body: #"{"code":0,"message":"success","data":{}}"#),
+            .init(statusCode: 401, body: #"{"message":"unauthorized"}"#),
         ]
         let client = Sub2APIClient(requestLoader: loader)
 
         do {
-            _ = try await client.subscriptions(
+            _ = try await client.usage(
                 baseURL: URL(string: "https://sub.example.com")!,
-                accessToken: "token"
+                apiKey: "bad"
             )
-            XCTFail("Expected subscriptions decoding to fail")
+            XCTFail("Expected authorization failure")
+        } catch let error as Sub2APIClientError {
+            XCTAssertTrue(error.isUnauthorized)
+            XCTAssertEqual(error.userMessage, "API Key 无效，请检查后重试")
+        }
+    }
+
+    func testNonAuthorizationHTTPStatusUsesReturnedMessage() async throws {
+        let loader = RequestRecordingLoader()
+        loader.responses = [
+            .init(statusCode: 500, body: #"{"message":"server down"}"#),
+        ]
+        let client = Sub2APIClient(requestLoader: loader)
+
+        do {
+            _ = try await client.usage(
+                baseURL: URL(string: "https://sub.example.com")!,
+                apiKey: "key"
+            )
+            XCTFail("Expected server failure")
+        } catch let error as Sub2APIClientError {
+            XCTAssertEqual(error.userMessage, "server down")
+        }
+    }
+
+    func testDecodingFailureUsesExpectedUserMessage() async throws {
+        let loader = RequestRecordingLoader()
+        loader.responses = [
+            .init(statusCode: 200, body: #"{"isValid":true,"subscription":{}}"#),
+        ]
+        let client = Sub2APIClient(requestLoader: loader)
+
+        do {
+            _ = try await client.usage(
+                baseURL: URL(string: "https://sub.example.com")!,
+                apiKey: "key"
+            )
+            XCTFail("Expected decoding failure")
         } catch let error as Sub2APIClientError {
             XCTAssertEqual(error.userMessage, "响应格式不符合预期")
         }
     }
 
-    func testSubscriptionMonitorRelogsOnceAfterUnauthorizedAndPreservesCachedDataOnRetryFailure() async throws {
-        let defaults = UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!
-        let keychain = InMemorySecretStore()
-        let loader = RequestRecordingLoader()
-        loader.responses = [
-            .init(statusCode: 200, body: Self.loginBody(token: "first-token")),
-            .init(statusCode: 200, body: Self.oneSubscriptionBody(id: "cached", used: 10)),
-            .init(statusCode: 401, body: #"{"code":401,"message":"unauthorized","data":[]}"#),
-            .init(statusCode: 200, body: Self.loginBody(token: "second-token")),
-            .init(statusCode: 500, body: #"{"code":500,"message":"server down","data":[]}"#),
-        ]
-        let monitor = await SubscriptionMonitor(
-            userDefaults: defaults,
-            secretStore: keychain,
-            client: Sub2APIClient(requestLoader: loader),
-            timerFactory: ManualTimerFactory()
-        )
-
-        await monitor.updateBaseURL("https://sub.example.com")
-        await monitor.updateEmail("user@example.com")
-        await monitor.updatePassword("secret")
-        try await monitor.loginAndRefresh()
-        let initialSelectedID = await MainActor.run { monitor.selectedSubscription?.id }
-        XCTAssertEqual(initialSelectedID, "cached")
-
-        await monitor.refreshNow()
-
-        let selectedIDAfterFailure = await MainActor.run { monitor.selectedSubscription?.id }
-        let lastError = await MainActor.run { monitor.lastError }
-        XCTAssertEqual(selectedIDAfterFailure, "cached")
-        XCTAssertEqual(lastError, "登录已失效，请重新验证")
-        XCTAssertEqual(loader.requests.map { $0.url?.path }, [
-            "/api/v1/auth/login",
-            "/api/v1/subscriptions",
-            "/api/v1/subscriptions",
-            "/api/v1/auth/login",
-            "/api/v1/subscriptions",
-        ])
-        XCTAssertEqual(loader.requests[2].value(forHTTPHeaderField: "Authorization"), "Bearer first-token")
-        XCTAssertEqual(loader.requests[4].value(forHTTPHeaderField: "Authorization"), "Bearer second-token")
+    static let invalidUsageJSON = """
+    {
+      "isValid": false,
+      "mode": "api-key",
+      "model_stats": [],
+      "planName": "Free",
+      "remaining": 0,
+      "subscription": {
+        "daily_usage_usd": 0,
+        "daily_limit_usd": 0,
+        "weekly_usage_usd": 0,
+        "weekly_limit_usd": 0,
+        "monthly_usage_usd": 0,
+        "monthly_limit_usd": 0,
+        "expires_at": null
+      },
+      "unit": "usd",
+      "usage": {
+        "today": 0,
+        "total": 0,
+        "average_duration_ms": 0,
+        "rpm": 0,
+        "tpm": 0
+      }
     }
-
-    static func loginBody(token: String) -> String {
-        """
-        {"code":0,"message":"success","data":{"access_token":"\(token)","refresh_token":"rt","expires_in":3600,"token_type":"Bearer","user":{"id":1,"email":"user@example.com","balance":336,"status":"active"}}}
-        """
-    }
-
-    static func oneSubscriptionBody(id: String, used: Double) -> String {
-        """
-        {"code":0,"message":"success","data":[{"id":"\(id)","status":"active","used_today_usd":\(used),"used_week_usd":25,"used_month_usd":50,"expires_at":null,"group":{"name":"Pro","platform":"openai","daily_limit_usd":100,"weekly_limit_usd":700,"monthly_limit_usd":3000}}]}
-        """
-    }
+    """
 }
 
 final class RequestRecordingLoader: Sub2APIRequestLoading {
@@ -148,9 +131,13 @@ final class RequestRecordingLoader: Sub2APIRequestLoading {
 
     var requests: [URLRequest] = []
     var responses: [Response] = []
+    var thrownError: Error?
 
     func data(for request: URLRequest) async throws -> (Data, URLResponse) {
         requests.append(request)
+        if let thrownError {
+            throw thrownError
+        }
         let response = responses.removeFirst()
         let httpResponse = HTTPURLResponse(
             url: request.url!,
@@ -162,62 +149,12 @@ final class RequestRecordingLoader: Sub2APIRequestLoading {
     }
 }
 
-final class InMemorySecretStore: SecretStoring {
-    var values: [SecretKey: String] = [:]
-
-    func read(_ key: SecretKey) throws -> String? {
-        values[key]
-    }
-
-    func write(_ value: String, for key: SecretKey) throws {
-        values[key] = value
-    }
-
-    func delete(_ key: SecretKey) throws {
-        values.removeValue(forKey: key)
-    }
-}
-
-final class CountingSecretStore: SecretStoring {
-    private var readCounts: [SecretKey: Int] = [:]
-
-    func read(_ key: SecretKey) throws -> String? {
-        readCounts[key, default: 0] += 1
-        return nil
-    }
-
-    func write(_ value: String, for key: SecretKey) throws {}
-
-    func delete(_ key: SecretKey) throws {}
-
-    func readCount(for key: SecretKey) -> Int {
-        readCounts[key, default: 0]
-    }
-}
-
-final class ThrowingSecretStore: SecretStoring {
-    let error: Error
-
-    init(error: Error) {
-        self.error = error
-    }
-
-    func read(_ key: SecretKey) throws -> String? {
-        throw error
-    }
-
-    func write(_ value: String, for key: SecretKey) throws {
-        throw error
-    }
-
-    func delete(_ key: SecretKey) throws {
-        throw error
-    }
-}
-
 final class ManualTimerFactory: RefreshTimerFactory {
+    private(set) var scheduledIntervals: [TimeInterval] = []
+
     func schedule(interval: TimeInterval, action: @escaping @Sendable () -> Void) -> RefreshTimer {
-        ManualRefreshTimer()
+        scheduledIntervals.append(interval)
+        return ManualRefreshTimer()
     }
 }
 

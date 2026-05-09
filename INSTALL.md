@@ -4,7 +4,7 @@
 
 - macOS 13 (Ventura) or later
 - Xcode Command Line Tools (`xcode-select --install`)
-- sub2api instance URL and account credentials
+- sub2api Base URL and API Key for `GET /v1/usage`
 
 ## Installation Methods
 
@@ -38,7 +38,7 @@ cp -R build/UsageMonitor.app /Applications/
 open /Applications/UsageMonitor.app
 ```
 
-The app runs in the menu bar. Open settings, enter the sub2api Base URL, email, and password, then click `登录/验证`.
+The app runs in the menu bar. Open settings, enter the sub2api Base URL and API Key, then click `验证并刷新`.
 
 ## Uninstall
 

@@ -15,19 +15,19 @@ enum UsageFormatters {
         "$" + String(Int(amount))
     }
 
-    static func dailyUsageText(used: Double, limit: Double) -> String {
-        if limit == 0 {
-            return "\(currency(used))/∞"
-        }
-        return "\(currency(used))/\(currency(limit))"
+    static func menuBarDailyUsageText(_ amount: Double, showDecimals: Bool) -> String {
+        showDecimals ? currency(amount) : truncatedCurrency(amount)
     }
 
-    static func compactDailyUsageText(used: Double, limit: Double, showDecimals: Bool = true) -> String {
-        let format = showDecimals ? currency : truncatedCurrency
+    static func balanceText(_ remaining: Double) -> String {
+        currency(remaining)
+    }
+
+    static func usageLimitText(used: Double, limit: Double) -> String {
         if limit == 0 {
-            return "\(format(used))\n∞"
+            return "\(currency(used)) / ∞"
         }
-        return "\(format(used))\n\(format(limit))"
+        return "\(currency(used)) / \(currency(limit))"
     }
 
     static func percentage(used: Double, limit: Double) -> Double? {
@@ -40,11 +40,6 @@ enum UsageFormatters {
             return "不限量"
         }
         return String(format: "%.1f%%", percentage * 100)
-    }
-
-    static func remainingText(used: Double, limit: Double) -> String {
-        guard limit > 0 else { return "∞" }
-        return currency(max(0, limit - used))
     }
 
     static func healthState(used: Double, limit: Double) -> UsageHealthState {
@@ -65,4 +60,31 @@ enum UsageFormatters {
         if date < now { return "已过期" }
         return date.formatted(date: .abbreviated, time: .omitted)
     }
+
+    static func bucketText(_ bucket: UsageUsageBucket) -> String {
+        "\(bucket.requestCount) 次 · \(integer(bucket.totalTokens)) tokens · \(currency(bucket.totalCostUSD))"
+    }
+
+    static func tokenBreakdownText(input: Int, output: Int) -> String {
+        "输入 \(integer(input)) · 输出 \(integer(output))"
+    }
+
+    static func costBreakdownText(input: Double, output: Double) -> String {
+        "输入 \(currency(input)) · 输出 \(currency(output))"
+    }
+
+    static func rateText(rpm: Double, tpm: Double) -> String {
+        String(format: "RPM %.2f · TPM %.2f", rpm, tpm)
+    }
+
+    private static func integer(_ value: Int) -> String {
+        integerFormatter.string(from: NSNumber(value: value)) ?? "\(value)"
+    }
+
+    private static let integerFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.maximumFractionDigits = 0
+        return formatter
+    }()
 }

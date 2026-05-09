@@ -1,29 +1,19 @@
 import SwiftUI
 
 struct MenuBarView: View {
-    @ObservedObject var monitor: SubscriptionMonitor
+    @ObservedObject var monitor: UsageSnapshotMonitor
     @ObservedObject var settingsWindowController: SettingsWindowController
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
 
-            if monitor.activeSubscriptions.isEmpty {
+            if let snapshot = monitor.snapshot {
+                usageSnapshot(snapshot)
+            } else {
                 Text(emptyStateText)
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                VStack(spacing: 8) {
-                    ForEach(monitor.activeSubscriptions) { subscription in
-                        subscriptionRow(subscription)
-                    }
-                }
-            }
-
-            if monitor.catalog.inactiveCount > 0 {
-                Text("另有 \(monitor.catalog.inactiveCount) 个非 active 套餐未显示")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
             }
 
             if let error = monitor.lastError {
@@ -33,15 +23,15 @@ struct MenuBarView: View {
             }
         }
         .padding(16)
-        .frame(width: 380)
+        .frame(width: 420)
     }
 
     private var header: some View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(monitor.email.isEmpty ? "用量监控" : monitor.email)
+                Text("用量监控")
                     .font(.headline)
-                Text("余额 \(UsageFormatters.currency(monitor.user?.balance ?? 0))")
+                Text("余额 \(monitor.balanceText)")
                     .font(.caption)
                     .foregroundColor(.secondary)
                 Text(refreshText)
@@ -86,69 +76,146 @@ struct MenuBarView: View {
 
     private var emptyStateText: String {
         switch monitor.authState {
-        case .notConfigured:
+        case .notConfigured, .ready:
             return "未配置"
-        case .needsLogin, .ready:
-            return "未登录"
         case .authenticated:
-            return "无套餐"
+            return "尚未获取用量"
+        case .unauthorized:
+            return "未授权"
         case .error:
-            return monitor.lastError == nil ? "刷新失败" : "保留上次成功数据"
+            return monitor.lastError == nil ? "刷新失败" : "暂无可用缓存"
         }
     }
 
-    private func subscriptionRow(_ subscription: Sub2APISubscription) -> some View {
-        Button {
-            monitor.setSelectedSubscription(subscription.id)
-        } label: {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: monitor.selectedSubscriptionID == subscription.id ? "checkmark.circle.fill" : "circle")
-                    .foregroundColor(monitor.selectedSubscriptionID == subscription.id ? .accentColor : .secondary)
-                    .frame(width: 18)
+    private func usageSnapshot(_ snapshot: UsageResponse) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            planSection(snapshot)
+            subscriptionSection(snapshot.subscription)
+            usageSection(snapshot.usage)
+            modelStatsSection(snapshot.modelStats)
+        }
+    }
 
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text(subscription.group.name)
-                            .font(.subheadline.bold())
-                        Text(subscription.group.platform)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        Spacer()
-                        Text(UsageFormatters.dailyUsageText(
-                            used: subscription.usedTodayUSD,
-                            limit: subscription.group.dailyLimitUSD
-                        ))
-                        .font(.subheadline.monospacedDigit())
-                    }
+    private func planSection(_ snapshot: UsageResponse) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(snapshot.planName)
+                    .font(.subheadline.bold())
+                Spacer()
+                Text(snapshot.isValid ? "有效" : "无效")
+                    .font(.caption)
+                    .foregroundColor(snapshot.isValid ? .green : .red)
+            }
+            HStack {
+                Text("模式 \(snapshot.mode)")
+                Text("单位 \(snapshot.unit)")
+                Text("剩余 \(UsageFormatters.balanceText(snapshot.remaining))")
+            }
+            .font(.caption)
+            .foregroundColor(.secondary)
+        }
+    }
 
-                    HStack {
-                        Text("剩余 \(UsageFormatters.remainingText(used: subscription.usedTodayUSD, limit: subscription.group.dailyLimitUSD))")
-                        Text(UsageFormatters.percentageText(
-                            used: subscription.usedTodayUSD,
-                            limit: subscription.group.dailyLimitUSD
-                        ))
-                        Text("周 \(UsageFormatters.currency(subscription.usedWeekUSD))")
-                        Text("月 \(UsageFormatters.currency(subscription.usedMonthUSD))")
-                    }
+    private func subscriptionSection(_ subscription: UsageSubscription) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("订阅")
+                .font(.caption.bold())
+            metricRow(
+                title: "今日",
+                value: UsageFormatters.usageLimitText(
+                    used: subscription.dailyUsageUSD,
+                    limit: subscription.dailyLimitUSD
+                ),
+                trailing: UsageFormatters.percentageText(
+                    used: subscription.dailyUsageUSD,
+                    limit: subscription.dailyLimitUSD
+                )
+            )
+            metricRow(
+                title: "本周",
+                value: UsageFormatters.usageLimitText(
+                    used: subscription.weeklyUsageUSD,
+                    limit: subscription.weeklyLimitUSD
+                )
+            )
+            metricRow(
+                title: "本月",
+                value: UsageFormatters.usageLimitText(
+                    used: subscription.monthlyUsageUSD,
+                    limit: subscription.monthlyLimitUSD
+                )
+            )
+            Text(UsageFormatters.expiryText(subscription.expiresAt))
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+    }
+
+    private func usageSection(_ usage: UsageUsageSummary) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("请求")
+                .font(.caption.bold())
+            metricRow(title: "今日", value: UsageFormatters.bucketText(usage.today))
+            metricRow(title: "总计", value: UsageFormatters.bucketText(usage.total))
+            Text(UsageFormatters.rateText(rpm: usage.rpm, tpm: usage.tpm))
+                .font(.caption)
+                .foregroundColor(.secondary)
+            Text(String(format: "平均耗时 %.1f ms", usage.averageDurationMS))
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+    }
+
+    private func modelStatsSection(_ modelStats: [UsageModelStat]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("模型")
+                .font(.caption.bold())
+            if modelStats.isEmpty {
+                Text("暂无模型用量")
                     .font(.caption)
                     .foregroundColor(.secondary)
-
-                    Text(UsageFormatters.expiryText(subscription.expiresAt))
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+            } else {
+                ForEach(Array(modelStats.enumerated()), id: \.offset) { _, stat in
+                    modelStatRow(stat)
                 }
             }
-            .padding(8)
-            .background(subscription.healthState.swiftUIColor.opacity(0.12))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
         }
-        .buttonStyle(.plain)
     }
-}
 
-private extension Sub2APISubscription {
-    var healthState: UsageHealthState {
-        UsageFormatters.healthState(used: usedTodayUSD, limit: group.dailyLimitUSD)
+    private func modelStatRow(_ stat: UsageModelStat) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack {
+                Text(stat.modelName)
+                    .font(.caption)
+                    .lineLimit(1)
+                Spacer()
+                Text("\(stat.requestCount) 次")
+                    .font(.caption.monospacedDigit())
+                    .foregroundColor(.secondary)
+            }
+            Text("\(stat.totalTokens) tokens · \(UsageFormatters.tokenBreakdownText(input: stat.inputTokens, output: stat.outputTokens))")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+            Text("成本 \(UsageFormatters.currency(stat.totalCostUSD)) · \(UsageFormatters.costBreakdownText(input: stat.inputCostUSD, output: stat.outputCostUSD))")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func metricRow(title: String, value: String, trailing: String? = nil) -> some View {
+        HStack {
+            Text(title)
+                .foregroundColor(.secondary)
+            Text(value)
+                .monospacedDigit()
+            Spacer()
+            if let trailing {
+                Text(trailing)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .font(.caption)
     }
 }
 

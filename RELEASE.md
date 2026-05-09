@@ -2,6 +2,8 @@
 
 Releases are handled by the GitHub Actions release workflow.
 
+Current releases package the API-key usage monitor flow: users configure Base URL and API Key only, and the app refreshes `GET /v1/usage`.
+
 ## Branch Release
 
 ```bash

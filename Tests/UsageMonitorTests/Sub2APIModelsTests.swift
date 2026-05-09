@@ -2,175 +2,137 @@ import XCTest
 @testable import UsageMonitor
 
 final class Sub2APIModelsTests: XCTestCase {
-    private let decoder = JSONDecoder()
+    func testUsageResponseParsesSampleJSONAndFractionalTimestamps() throws {
+        let response = try JSONDecoder.sub2api.decode(
+            UsageResponse.self,
+            from: Data(Self.sampleUsageJSON.utf8)
+        )
 
-    func testLoginResponseParsesTokenAndUserFields() throws {
+        XCTAssertTrue(response.isValid)
+        XCTAssertEqual(response.mode, "api-key")
+        XCTAssertEqual(response.planName, "Pro")
+        XCTAssertEqual(response.remaining, 415.96)
+        XCTAssertEqual(response.unit, "usd")
+        XCTAssertEqual(response.subscription.dailyUsageUSD, 84.04)
+        XCTAssertEqual(response.subscription.dailyLimitUSD, 500)
+        XCTAssertEqual(response.subscription.weeklyUsageUSD, 120.5)
+        XCTAssertEqual(response.subscription.weeklyLimitUSD, 2500)
+        XCTAssertEqual(response.subscription.monthlyUsageUSD, 300.25)
+        XCTAssertEqual(response.subscription.monthlyLimitUSD, 10000)
+        XCTAssertNotNil(response.subscription.expiresAt)
+        XCTAssertEqual(response.usage.today.requestCount, 12)
+        XCTAssertEqual(response.usage.today.totalTokens, 3000)
+        XCTAssertEqual(response.usage.total.totalCostUSD, 19.75)
+        XCTAssertEqual(response.usage.averageDurationMS, 842.7)
+        XCTAssertEqual(response.usage.rpm, 0.7)
+        XCTAssertEqual(response.usage.tpm, 85.3)
+        XCTAssertEqual(response.modelStats.map(\.modelName), ["gpt-4o-mini", "claude-3-5-sonnet"])
+        XCTAssertEqual(response.modelStats[0].requestCount, 7)
+        XCTAssertEqual(response.modelStats[0].inputCostUSD, 0.12)
+        XCTAssertEqual(response.modelStats[0].outputCostUSD, 0.34)
+        XCTAssertEqual(response.modelStats[0].totalCostUSD, 0.46)
+    }
+
+    func testUsageResponseAllowsNumericStringsForKnownAmountFields() throws {
         let json = """
         {
-          "code": 0,
-          "message": "success",
-          "data": {
-            "access_token": "jwt-token",
-            "refresh_token": "rt-token",
-            "expires_in": 86400,
-            "token_type": "Bearer",
-            "user": {
-              "id": 2964,
-              "email": "user@example.com",
-              "balance": 336,
-              "status": "active"
-            }
+          "isValid": true,
+          "mode": "api-key",
+          "model_stats": [],
+          "planName": "Starter",
+          "remaining": "12.5",
+          "subscription": {
+            "daily_usage_usd": "2.5",
+            "daily_limit_usd": "10",
+            "weekly_usage_usd": "3",
+            "weekly_limit_usd": "70",
+            "monthly_usage_usd": "4",
+            "monthly_limit_usd": "300",
+            "expires_at": null
+          },
+          "unit": "usd",
+          "usage": {
+            "today": 2.5,
+            "total": 4,
+            "average_duration_ms": "100.5",
+            "rpm": "0.2",
+            "tpm": "1.5"
           }
         }
         """
 
-        let response = try decoder.decode(Sub2APILoginEnvelope.self, from: Data(json.utf8))
+        let response = try JSONDecoder.sub2api.decode(UsageResponse.self, from: Data(json.utf8))
 
-        XCTAssertEqual(response.code, 0)
-        XCTAssertEqual(response.message, "success")
-        XCTAssertEqual(response.data?.accessToken, "jwt-token")
-        XCTAssertEqual(response.data?.refreshToken, "rt-token")
-        XCTAssertEqual(response.data?.expiresIn, 86400)
-        XCTAssertEqual(response.data?.tokenType, "Bearer")
-        XCTAssertEqual(response.data?.user.email, "user@example.com")
-        XCTAssertEqual(response.data?.user.balance, 336)
+        XCTAssertEqual(response.remaining, 12.5)
+        XCTAssertEqual(response.subscription.dailyUsageUSD, 2.5)
+        XCTAssertEqual(response.usage.today.totalCostUSD, 2.5)
+        XCTAssertEqual(response.usage.total.totalCostUSD, 4)
+        XCTAssertEqual(response.usage.averageDurationMS, 100.5)
     }
 
-    func testSubscriptionsResponseParsesActiveAndInactiveRecords() throws {
-        let response = try decoder.decode(
-            Sub2APISubscriptionsEnvelope.self,
-            from: Data(Self.subscriptionsJSON.utf8)
-        )
-
-        XCTAssertEqual(response.code, 0)
-        XCTAssertEqual(response.data.count, 3)
-        XCTAssertEqual(response.data[0].status, "active")
-        XCTAssertEqual(response.data[0].group.name, "Pro")
-        XCTAssertEqual(response.data[0].group.platform, "openai")
-        XCTAssertEqual(response.data[0].group.dailyLimitUSD, 500)
-        XCTAssertEqual(response.data[1].status, "expired")
-    }
-
-    func testSubscriptionsResponseParsesLiveSub2APIFieldNames() throws {
-        let response = try decoder.decode(
-            Sub2APISubscriptionsEnvelope.self,
-            from: Data(Self.liveShapeSubscriptionsJSON.utf8)
-        )
-
-        XCTAssertEqual(response.data[0].id, "3182")
-        XCTAssertEqual(response.data[0].usedTodayUSD, 84.04)
-        XCTAssertEqual(response.data[0].usedWeekUSD, 120.5)
-        XCTAssertEqual(response.data[0].usedMonthUSD, 300.25)
-        XCTAssertEqual(response.data[0].group.dailyLimitUSD, 500)
-    }
-
-    func testActiveFilteringAndInactiveCount() throws {
-        let response = try decoder.decode(
-            Sub2APISubscriptionsEnvelope.self,
-            from: Data(Self.subscriptionsJSON.utf8)
-        )
-        let catalog = SubscriptionCatalog(all: response.data)
-
-        XCTAssertEqual(catalog.active.map(\.id), ["sub-active", "sub-unlimited"])
-        XCTAssertEqual(catalog.inactiveCount, 1)
-    }
-
-    func testSelectedSubscriptionLookupHandlesMissingOrInactiveIDs() throws {
-        let response = try decoder.decode(
-            Sub2APISubscriptionsEnvelope.self,
-            from: Data(Self.subscriptionsJSON.utf8)
-        )
-        let catalog = SubscriptionCatalog(all: response.data)
-
-        XCTAssertEqual(catalog.selectedSubscription(id: "sub-active")?.id, "sub-active")
-        XCTAssertNil(catalog.selectedSubscription(id: "sub-expired"))
-        XCTAssertEqual(catalog.selectedSubscription(id: "missing")?.id, "sub-active")
-        XCTAssertEqual(catalog.selectedSubscription(id: nil)?.id, "sub-active")
-    }
-
-    static let subscriptionsJSON = """
+    static let sampleUsageJSON = """
     {
-      "code": 0,
-      "message": "success",
-      "data": [
+      "isValid": true,
+      "mode": "api-key",
+      "model_stats": [
         {
-          "id": "sub-active",
-          "status": "active",
-          "used_today_usd": 84.04,
-          "used_week_usd": 120.5,
-          "used_month_usd": 300.25,
-          "expires_at": "2026-06-01T12:00:00Z",
-          "group": {
-            "name": "Pro",
-            "platform": "openai",
-            "daily_limit_usd": 500,
-            "weekly_limit_usd": 2500,
-            "monthly_limit_usd": 10000
-          }
+          "model": "gpt-4o-mini",
+          "request_count": 7,
+          "input_tokens": 1000,
+          "output_tokens": 2000,
+          "total_tokens": 3000,
+          "input_cost_usd": 0.12,
+          "output_cost_usd": 0.34,
+          "total_cost_usd": 0.46,
+          "ignored": "field"
         },
         {
-          "id": "sub-expired",
-          "status": "expired",
-          "used_today_usd": 4,
-          "used_week_usd": 10,
-          "used_month_usd": 20,
-          "expires_at": null,
-          "group": {
-            "name": "Old",
-            "platform": "anthropic",
-            "daily_limit_usd": 100,
-            "weekly_limit_usd": 700,
-            "monthly_limit_usd": 3000
-          }
+          "model_name": "claude-3-5-sonnet",
+          "requests": 5,
+          "prompt_tokens": 400,
+          "completion_tokens": 600,
+          "tokens": 1000,
+          "input_cost": 0.20,
+          "output_cost": 0.90,
+          "cost": 1.10
+        }
+      ],
+      "planName": "Pro",
+      "remaining": 415.96,
+      "subscription": {
+        "daily_usage_usd": 84.04,
+        "daily_limit_usd": 500,
+        "weekly_usage_usd": 120.5,
+        "weekly_limit_usd": 2500,
+        "monthly_usage_usd": 300.25,
+        "monthly_limit_usd": 10000,
+        "expires_at": "2026-06-01T12:00:00.123Z"
+      },
+      "unit": "usd",
+      "usage": {
+        "today": {
+          "request_count": 12,
+          "input_tokens": 1000,
+          "output_tokens": 2000,
+          "total_tokens": 3000,
+          "input_cost_usd": 0.45,
+          "output_cost_usd": 0.78,
+          "total_cost_usd": 1.23
         },
-        {
-          "id": "sub-unlimited",
-          "status": "active",
-          "used_today_usd": 1.25,
-          "used_week_usd": 7,
-          "used_month_usd": 30,
-          "expires_at": null,
-          "group": {
-            "name": "Unlimited",
-            "platform": "openai",
-            "daily_limit_usd": 0,
-            "weekly_limit_usd": 0,
-            "monthly_limit_usd": 0
-          }
-        }
-      ]
-    }
-    """
-
-    static let liveShapeSubscriptionsJSON = """
-    {
-      "code": 0,
-      "message": "success",
-      "data": [
-        {
-          "id": 3182,
-          "user_id": 2964,
-          "group_id": 12,
-          "starts_at": "2026-05-01T00:00:00.000Z",
-          "expires_at": "2026-06-01T12:00:00.000Z",
-          "status": "active",
-          "daily_usage_usd": 84.04,
-          "weekly_usage_usd": 120.5,
-          "monthly_usage_usd": 300.25,
-          "created_at": "2026-05-01T00:00:00.000Z",
-          "updated_at": "2026-05-09T00:00:00.000Z",
-          "group": {
-            "id": 12,
-            "name": "Pro",
-            "description": "Plan",
-            "platform": "openai",
-            "daily_limit_usd": 500,
-            "weekly_limit_usd": 2500,
-            "monthly_limit_usd": 10000,
-            "status": "active"
-          }
-        }
-      ]
+        "total": {
+          "request_count": 90,
+          "input_tokens": 12000,
+          "output_tokens": 13000,
+          "total_tokens": 25000,
+          "input_cost_usd": 8.25,
+          "output_cost_usd": 11.50,
+          "total_cost_usd": 19.75
+        },
+        "average_duration_ms": 842.7,
+        "rpm": 0.7,
+        "tpm": 85.3
+      },
+      "unknown_root": true
     }
     """
 }

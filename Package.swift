@@ -21,11 +21,7 @@ let package = Package(
         // ── Main App ──────────────────────────────────────
         .executableTarget(
             name: "UsageMonitor",
-            path: "Sources/UsageMonitor",
-            linkerSettings: [
-                .linkedFramework("Security"),
-                .linkedFramework("WebKit"),
-            ]
+            path: "Sources/UsageMonitor"
         ),
 
         // ── Unit Tests ───────────────────────────────────

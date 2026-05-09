@@ -8,29 +8,29 @@ final class UsageFormattersTests: XCTestCase {
         XCTAssertEqual(UsageFormatters.currency(0.5), "$0.50")
     }
 
-    func testDailyLimitZeroFormatsAsInfinityAndHasNoPercentage() {
-        let text = UsageFormatters.dailyUsageText(used: 84.04, limit: 0)
-
-        XCTAssertEqual(text, "$84.04/∞")
-        XCTAssertNil(UsageFormatters.percentage(used: 84.04, limit: 0))
-        XCTAssertEqual(UsageFormatters.healthState(used: 84.04, limit: 0), .normal)
-    }
-
-    func testDailyUsageTextFormatsLimitedPlan() {
+    func testMenuBarDailyUsageUsesOnlyUsageValue() {
         XCTAssertEqual(
-            UsageFormatters.dailyUsageText(used: 84.04, limit: 500),
-            "$84.04/$500.00"
+            UsageFormatters.menuBarDailyUsageText(84.04, showDecimals: true),
+            "$84.04"
+        )
+        XCTAssertEqual(
+            UsageFormatters.menuBarDailyUsageText(84.99, showDecimals: false),
+            "$84"
         )
     }
 
-    func testCompactDailyUsageTextStacksUsedAndLimitForMenuBar() {
+    func testBalanceFormattingUsesRemainingValue() {
+        XCTAssertEqual(UsageFormatters.balanceText(415.96), "$415.96")
+    }
+
+    func testUsageLimitFormattingHandlesUnlimitedLimits() {
         XCTAssertEqual(
-            UsageFormatters.compactDailyUsageText(used: 84.04, limit: 500),
-            "$84.04\n$500.00"
+            UsageFormatters.usageLimitText(used: 84.04, limit: 500),
+            "$84.04 / $500.00"
         )
         XCTAssertEqual(
-            UsageFormatters.compactDailyUsageText(used: 84.04, limit: 0),
-            "$84.04\n∞"
+            UsageFormatters.usageLimitText(used: 84.04, limit: 0),
+            "$84.04 / ∞"
         )
     }
 
@@ -39,10 +39,23 @@ final class UsageFormattersTests: XCTestCase {
         XCTAssertEqual(UsageFormatters.healthState(used: 80, limit: 100), .warning)
         XCTAssertEqual(UsageFormatters.healthState(used: 94.99, limit: 100), .warning)
         XCTAssertEqual(UsageFormatters.healthState(used: 95, limit: 100), .danger)
+        XCTAssertEqual(UsageFormatters.healthState(used: 95, limit: 0), .normal)
     }
 
-    func testRemainingAmountNeverDropsBelowZero() {
-        XCTAssertEqual(UsageFormatters.remainingText(used: 125, limit: 100), "$0.00")
-        XCTAssertEqual(UsageFormatters.remainingText(used: 25, limit: 100), "$75.00")
+    func testUsageBucketTextShowsRequestsTokensAndCost() {
+        let bucket = UsageUsageBucket(
+            requestCount: 12,
+            inputTokens: 1000,
+            outputTokens: 2000,
+            totalTokens: 3000,
+            inputCostUSD: 0.45,
+            outputCostUSD: 0.78,
+            totalCostUSD: 1.23
+        )
+
+        XCTAssertEqual(
+            UsageFormatters.bucketText(bucket),
+            "12 次 · 3,000 tokens · $1.23"
+        )
     }
 }

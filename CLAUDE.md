@@ -4,7 +4,7 @@
 
 Native macOS menu bar app written in Swift/SwiftUI. The user-facing product name is `用量监控`; the technical package and executable are `UsageMonitor`.
 
-The app connects to one sub2api instance and one account, stores secrets in Keychain, stores ordinary preferences in UserDefaults, and displays the selected subscription's daily usage in the menu bar.
+The app connects to one sub2api-compatible usage endpoint, stores Base URL, API Key, and ordinary preferences in UserDefaults, and displays `subscription.daily_usage_usd` from `GET /v1/usage` in the menu bar.
 
 ## Build Commands
 
@@ -23,39 +23,30 @@ swift test
 swift test --filter UsageMonitorTests.Sub2APIClientTests
 ```
 
-No test should call a real sub2api service. Use the injectable `Sub2APIRequestLoading` protocol for API-client tests.
+No test should call a real service. Use the injectable `Sub2APIRequestLoading` protocol for API-client tests.
 
 ## Architecture
 
 - `UsageMonitorApp` — SwiftUI `MenuBarExtra` entry point
-- `Sub2APIModels` — login/subscription Codable DTOs and normalized catalog helpers
-- `Sub2APIClient` — login/subscriptions requests, envelope decoding, HTTP/API error mapping
-- `KeychainStore` — Security framework wrapper for password/token storage
-- `WebLoginTokenExtractor` — extracts captured web login tokens from WebKit storage/cookies
-- `SubscriptionMonitor` — `ObservableObject` owning config, auth, refresh, selected subscription, cached data, and timer state
-- `UsageFormatters` — currency, daily usage, remaining quota, percentage, expiry, and quota health formatting
-- `MenuBarView` — popover UI
-- `SettingsView` — Base URL, email, password, subscription picker, refresh controls
+- `Sub2APIModels` — usage response DTOs for `UsageResponse`, `UsageSubscription`, usage buckets, and model stats
+- `Sub2APIClient` — `GET /v1/usage` request construction, response decoding, HTTP/network/API error mapping
+- `UsageSnapshotMonitor` — `ObservableObject` in `Monitors/UsageSnapshotMonitor.swift` owning config, validation, refresh, cached snapshot, error state, and timer state
+- `UsageFormatters` — currency, menu-bar daily usage, balance, usage limits, bucket text, expiry, and quota health formatting
+- `MenuBarView` — popover UI for remaining balance, plan, mode, subscription, usage summary, and model stats
+- `SettingsView` — Base URL, API Key, decimal-display toggle, refresh interval, validation, and manual refresh controls
 - `SettingsWindowController` — separate settings window lifecycle
-- `WebLoginWindowController` — `WKWebView` login window for Cloudflare Turnstile-protected instances
 
 ## Storage
 
 UserDefaults:
 
 - Base URL
-- Email
-- Selected menu-bar subscription ID
+- API Key
 - Refresh interval
 - Menu-bar decimal display toggle
 
-Keychain service `com.usagemonitor.app.sub2api`:
-
-- Password
-- Access token
-- Refresh token
-- Access-token expiry timestamp
+Old email and selected-subscription UserDefaults keys are removed during migration and should not be used by new behavior. Do not read or write Keychain in normal app runtime.
 
 ## Removed Domain
 
-Do not reintroduce network latency monitoring, GPS tracking, maps, quality databases, data browsers, predictive alerts, update checking, or multi-account mode unless a new spec explicitly asks for it.
+Do not reintroduce account login, web login, subscription selection, network latency monitoring, GPS tracking, maps, quality databases, data browsers, predictive alerts, update checking, or multi-account mode unless a new spec explicitly asks for it.
