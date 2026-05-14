@@ -109,6 +109,47 @@ final class ServiceStatusModelsTests: XCTestCase {
         )
     }
 
+    func testTimelineRowsFollowConfiguredModelOrderAndPadToSixtyCells() throws {
+        let response = ServiceStatusResponse(
+            allOK: true,
+            generatedAt: 1,
+            services: [
+                ServiceStatusService(
+                    model: "gpt-5.4-mini",
+                    uptimePct: 65,
+                    last: ServiceStatusProbe(ts: 4, ok: true, latencyMS: 2_000, error: nil),
+                    history: [
+                        ServiceStatusProbe(ts: 2, ok: false, latencyMS: nil, error: "timeout"),
+                        ServiceStatusProbe(ts: 3, ok: true, latencyMS: 3_000, error: nil),
+                        ServiceStatusProbe(ts: 4, ok: true, latencyMS: 2_000, error: nil),
+                    ]
+                ),
+                ServiceStatusService(
+                    model: "gpt-5.5",
+                    uptimePct: 95,
+                    last: ServiceStatusProbe(ts: 5, ok: true, latencyMS: 1_000, error: nil),
+                    history: [
+                        ServiceStatusProbe(ts: 5, ok: true, latencyMS: 1_000, error: nil),
+                    ]
+                ),
+            ]
+        )
+
+        let rows = response.timelineRows(
+            for: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"],
+            count: 60
+        )
+
+        XCTAssertEqual(rows.map(\.model), ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"])
+        XCTAssertEqual(rows.map(\.cells.count), [60, 60, 60])
+        XCTAssertEqual(rows.map(\.sampleCount), [1, 0, 3])
+        XCTAssertEqual(rows.map(\.samplesText), ["1/60", "0/60", "3/60"])
+        XCTAssertEqual(rows.map(\.statusText), ["在线", "缺少数据", "在线"])
+        XCTAssertEqual(rows[0].cells.suffix(1).map(\.kind), [.green])
+        XCTAssertEqual(rows[1].cells.map(\.kind), Array(repeating: .gray, count: 60))
+        XCTAssertEqual(rows[2].cells.suffix(3).map(\.kind), [.red, .yellow, .green])
+    }
+
     static let sampleStatusJSON = """
     {
       "all_ok": true,

@@ -13,7 +13,9 @@ enum ServiceStatusMonitorError: Error, Equatable {
 
 @MainActor
 final class ServiceStatusMonitor: ObservableObject {
+    static let monitoredModels = ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"]
     static let targetModel = "gpt-5.5"
+    static let popoverTimelineCellCount = 60
     static let refreshInterval: TimeInterval = 60
 
     @Published private(set) var response: ServiceStatusResponse?
@@ -46,6 +48,23 @@ final class ServiceStatusMonitor: ObservableObject {
     var displayCells: [ServiceStatusDisplayCell] {
         selectedService?.latestDisplayCells(count: 8)
             ?? Array(repeating: ServiceStatusDisplayCell(kind: .gray, probe: nil), count: 8)
+    }
+
+    var timelineRows: [ServiceStatusTimelineRow] {
+        if let response {
+            return response.timelineRows(
+                for: Self.monitoredModels,
+                count: Self.popoverTimelineCellCount
+            )
+        }
+
+        return Self.monitoredModels.map {
+            ServiceStatusTimelineRow(
+                model: $0,
+                service: nil,
+                count: Self.popoverTimelineCellCount
+            )
+        }
     }
 
     var isStaleAfterFailure: Bool {

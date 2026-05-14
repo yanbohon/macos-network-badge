@@ -27,6 +27,13 @@ struct ServiceStatusResponse: Codable, Equatable {
     func service(model: String) -> ServiceStatusService? {
         services.first { $0.model == model }
     }
+
+    func timelineRows(for models: [String], count: Int = 60) -> [ServiceStatusTimelineRow] {
+        models.map { model in
+            let service = service(model: model)
+            return ServiceStatusTimelineRow(model: model, service: service, count: count)
+        }
+    }
 }
 
 struct ServiceStatusService: Codable, Equatable {
@@ -120,6 +127,50 @@ struct ServiceStatusDisplayCell: Equatable {
         case .gray:
             return "状态未知"
         }
+    }
+}
+
+struct ServiceStatusTimelineRow: Equatable, Identifiable {
+    let model: String
+    let service: ServiceStatusService?
+    let cells: [ServiceStatusDisplayCell]
+    let sampleCount: Int
+    let totalCount: Int
+
+    var id: String { model }
+
+    init(model: String, service: ServiceStatusService?, count: Int = 60) {
+        self.model = model
+        self.service = service
+        cells = service?.latestDisplayCells(count: count)
+            ?? Array(repeating: ServiceStatusDisplayCell(kind: .gray, probe: nil), count: count)
+        sampleCount = service.map { min($0.history.count, count) } ?? 0
+        totalCount = count
+    }
+
+    var latestKind: ServiceStatusCellKind {
+        ServiceStatusCellKind.classify(service?.last)
+    }
+
+    var statusText: String {
+        switch latestKind {
+        case .green:
+            return "在线"
+        case .yellow:
+            return "高延迟"
+        case .red:
+            return "失败"
+        case .gray:
+            return "缺少数据"
+        }
+    }
+
+    var uptimeText: String {
+        service?.uptimePct.map { String(format: "%.2f%%", $0) } ?? "--"
+    }
+
+    var samplesText: String {
+        "\(sampleCount)/\(totalCount)"
     }
 }
 

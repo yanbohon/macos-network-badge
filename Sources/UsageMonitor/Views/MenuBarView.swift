@@ -1,6 +1,10 @@
 import SwiftUI
 
 struct MenuBarView: View {
+    private static let serviceTimelineCellWidth: CGFloat = 4.8
+    private static let serviceTimelineCellHeight: CGFloat = 16
+    private static let serviceTimelineCellSpacing: CGFloat = 2
+
     @ObservedObject var monitor: UsageSnapshotMonitor
     @ObservedObject var serviceStatusMonitor: ServiceStatusMonitor
     @ObservedObject var settingsWindowController: SettingsWindowController
@@ -108,23 +112,14 @@ struct MenuBarView: View {
     }
 
     private var serviceStatusSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center) {
                 Text("服务状态")
                     .font(.caption.bold())
                 Spacer()
-                Text(ServiceStatusMonitor.targetModel)
+                Text("\(ServiceStatusMonitor.monitoredModels.count) models")
                     .font(.caption.monospacedDigit())
                     .foregroundColor(.secondary)
-            }
-
-            HStack(spacing: 8) {
-                Text(serviceStatusMonitor.currentStatusText)
-                    .font(.subheadline.bold())
-                    .foregroundColor(serviceStatusColor)
-                Spacer()
-                serviceStatusCells(serviceStatusMonitor.displayCells)
-                    .opacity(serviceStatusMonitor.isStaleAfterFailure ? 0.55 : 1)
             }
 
             if let detail = serviceStatusMonitor.lastError {
@@ -134,11 +129,11 @@ struct MenuBarView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            serviceStatusMetadata
-
-            if let service = serviceStatusMonitor.selectedService {
-                serviceHistoryList(service.history.suffix(8))
+            ForEach(serviceStatusMonitor.timelineRows) { row in
+                serviceTimelineRow(row)
             }
+
+            serviceStatusFooter
 
             if let rawJSONText = serviceStatusMonitor.rawJSONText {
                 DisclosureGroup("原始响应 JSON") {
@@ -157,11 +152,108 @@ struct MenuBarView: View {
         .padding(.vertical, 2)
     }
 
-    private var serviceStatusColor: Color {
-        if serviceStatusMonitor.lastError != nil && serviceStatusMonitor.selectedService == nil {
-            return .orange
+    private func serviceTimelineRow(_ row: ServiceStatusTimelineRow) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 7) {
+                Text(row.model)
+                    .font(.caption.bold().monospaced())
+                    .lineLimit(1)
+                Circle()
+                    .fill(row.latestKind.swiftUIColor)
+                    .frame(width: 7, height: 7)
+                    .opacity(row.latestKind == .gray ? 0.45 : 1)
+                Text(row.statusText)
+                    .font(.caption.monospaced())
+                    .foregroundColor(statusColor(for: row.latestKind))
+                Spacer()
+            }
+
+            HStack(spacing: 16) {
+                Text("可用率")
+                    .foregroundColor(.secondary)
+                Text(row.uptimeText)
+                    .foregroundColor(uptimeColor(for: row))
+                Text("样本")
+                    .foregroundColor(.secondary)
+                Text(row.samplesText)
+                Spacer()
+            }
+            .font(.caption.monospacedDigit())
+
+            HStack(spacing: Self.serviceTimelineCellSpacing) {
+                ForEach(Array(row.cells.enumerated()), id: \.offset) { _, cell in
+                    RoundedRectangle(cornerRadius: 1.5)
+                        .fill(cell.kind.swiftUIColor)
+                        .frame(
+                            width: Self.serviceTimelineCellWidth,
+                            height: Self.serviceTimelineCellHeight
+                        )
+                        .opacity(cell.kind == .gray ? 0.35 : 1)
+                        .help(timelineCellHelp(row: row, cell: cell))
+                }
+            }
+            .opacity(serviceStatusMonitor.isStaleAfterFailure ? 0.55 : 1)
+            .accessibilityLabel("\(row.model) 最近六十次状态")
+
+            HStack {
+                Text("-60m")
+                Spacer()
+                Text("-45m")
+                Spacer()
+                Text("-30m")
+                Spacer()
+                Text("-15m")
+                Spacer()
+                Text("现在")
+            }
+            .font(.caption2.monospacedDigit())
+            .foregroundColor(.secondary)
         }
-        switch ServiceStatusCellKind.classify(serviceStatusMonitor.selectedService?.last) {
+    }
+
+    private var serviceStatusFooter: some View {
+        HStack(spacing: 10) {
+            if let generatedAt = serviceStatusMonitor.response?.generatedAt {
+                Text("接口生成 \(formattedTimestamp(generatedAt))")
+            }
+            if let refreshedAt = serviceStatusMonitor.lastSuccessfulRefresh {
+                Text("状态刷新 \(refreshedAt.formatted(date: .omitted, time: .standard))")
+            }
+        }
+        .font(.caption)
+        .foregroundColor(.secondary)
+    }
+
+    private func timelineCellHelp(row: ServiceStatusTimelineRow, cell: ServiceStatusDisplayCell) -> String {
+        var lines = [row.model]
+        if let timestamp = cell.probe?.ts {
+            lines.append(formattedTimestamp(timestamp))
+        }
+        lines.append("状态 \(cellStatusText(for: cell.kind))")
+        if let latencyMS = cell.probe?.latencyMS {
+            lines.append("延迟 \(formattedLatency(latencyMS))")
+        }
+        if let error = cell.probe?.error, !error.isEmpty {
+            lines.append("错误 \(error)")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private func cellStatusText(for kind: ServiceStatusCellKind) -> String {
+        switch kind {
+        case .green:
+            return "正常"
+        case .yellow:
+            return "高延迟"
+        case .red:
+            return "失败"
+        case .gray:
+            return "未知"
+        }
+    }
+
+    private func statusColor(for kind: ServiceStatusCellKind) -> Color {
+        switch kind {
         case .green:
             return .green
         case .yellow:
@@ -173,74 +265,17 @@ struct MenuBarView: View {
         }
     }
 
-    private var serviceStatusMetadata: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            if let service = serviceStatusMonitor.selectedService {
-                metricRow(title: "可用率", value: service.uptimePct.map { String(format: "%.2f%%", $0) } ?? "--")
-                metricRow(title: "最近探测", value: formattedProbeTime(service.last?.ts))
-                metricRow(title: "最近延迟", value: formattedLatency(service.last?.latencyMS))
-                if let error = service.last?.error, !error.isEmpty {
-                    metricRow(title: "最近错误", value: error)
-                }
-            }
-
-            if let generatedAt = serviceStatusMonitor.response?.generatedAt {
-                metricRow(title: "接口生成", value: formattedTimestamp(generatedAt))
-            }
-            if let refreshedAt = serviceStatusMonitor.lastSuccessfulRefresh {
-                metricRow(title: "状态刷新", value: refreshedAt.formatted(date: .omitted, time: .standard))
-            }
+    private func uptimeColor(for row: ServiceStatusTimelineRow) -> Color {
+        guard let uptime = row.service?.uptimePct else {
+            return .secondary
         }
-    }
-
-    private func serviceStatusCells(_ cells: [ServiceStatusDisplayCell]) -> some View {
-        HStack(spacing: 3) {
-            ForEach(Array(cells.enumerated()), id: \.offset) { _, cell in
-                RoundedRectangle(cornerRadius: 1.5)
-                    .fill(cell.kind.swiftUIColor)
-                    .frame(width: 8, height: 10)
-                    .opacity(cell.kind == .gray ? 0.45 : 1)
-                    .help(cell.helpText)
-            }
+        if uptime >= 95 {
+            return .green
         }
-        .accessibilityLabel("gpt-5.5 最近八次状态")
-    }
-
-    private func serviceHistoryList(_ history: ArraySlice<ServiceStatusProbe>) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("最近记录")
-                .font(.caption.bold())
-            if history.isEmpty {
-                Text("暂无历史状态")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            } else {
-                ForEach(Array(history.enumerated()), id: \.offset) { _, probe in
-                    HStack(spacing: 8) {
-                        Circle()
-                            .fill(ServiceStatusCellKind.classify(probe).swiftUIColor)
-                            .frame(width: 7, height: 7)
-                        Text(formattedProbeTime(probe.ts))
-                            .font(.caption.monospacedDigit())
-                            .foregroundColor(.secondary)
-                        Text(formattedLatency(probe.latencyMS))
-                            .font(.caption.monospacedDigit())
-                        if let error = probe.error, !error.isEmpty {
-                            Text(error)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
-                        }
-                        Spacer()
-                    }
-                }
-            }
+        if uptime >= 80 {
+            return .orange
         }
-    }
-
-    private func formattedProbeTime(_ timestamp: TimeInterval?) -> String {
-        guard let timestamp else { return "--" }
-        return formattedTimestamp(timestamp)
+        return .red
     }
 
     private func formattedTimestamp(_ timestamp: TimeInterval) -> String {
