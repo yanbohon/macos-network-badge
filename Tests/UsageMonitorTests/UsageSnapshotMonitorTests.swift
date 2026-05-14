@@ -13,7 +13,7 @@ final class UsageSnapshotMonitorTests: XCTestCase {
             timerFactory: ManualTimerFactory()
         )
 
-        XCTAssertEqual(monitor.refreshIntervalMinutes, 5)
+        XCTAssertEqual(monitor.refreshIntervalSeconds, 300)
         XCTAssertNil(defaults.string(forKey: UsageSnapshotMonitor.DefaultsKey.email))
         XCTAssertNil(defaults.string(forKey: UsageSnapshotMonitor.DefaultsKey.selectedSubscriptionID))
 
@@ -21,8 +21,8 @@ final class UsageSnapshotMonitorTests: XCTestCase {
         XCTAssertEqual(monitor.baseURLText, "https://sub.example.com")
         XCTAssertEqual(defaults.string(forKey: UsageSnapshotMonitor.DefaultsKey.baseURL), "https://sub.example.com")
 
-        monitor.refreshIntervalMinutes = 2
-        XCTAssertEqual(monitor.refreshIntervalMinutes, 5)
+        monitor.refreshIntervalSeconds = 2
+        XCTAssertEqual(monitor.refreshIntervalSeconds, 300)
     }
 
     func testAPIKeyPersistsTrimmedAndClearingDeletesIt() {
@@ -215,6 +215,17 @@ final class UsageSnapshotMonitorTests: XCTestCase {
         XCTAssertEqual(monitor.authState, .unauthorized)
     }
 
+    func testMenuBarDecimalPreferenceDefaultsToShowingDecimals() async throws {
+        let defaults = UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!
+        let monitor = UsageSnapshotMonitor(
+            userDefaults: defaults,
+            client: Sub2APIClient(requestLoader: RequestRecordingLoader()),
+            timerFactory: ManualTimerFactory()
+        )
+
+        XCTAssertTrue(monitor.showMenuBarDecimals)
+    }
+
     func testMenuBarDecimalPreferenceTruncatesOnlyMenuBarValue() async throws {
         let defaults = UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!
         let loader = RequestRecordingLoader()
@@ -235,6 +246,7 @@ final class UsageSnapshotMonitorTests: XCTestCase {
 
         XCTAssertEqual(monitor.menuBarText, "$84")
         XCTAssertEqual(monitor.balanceText, "$415.96")
+        XCTAssertEqual(defaults.object(forKey: "sub2api.showMenuBarDecimals") as? Bool, false)
     }
 
     func testRefreshIntervalPersistsAndReschedulesTimer() {
@@ -246,9 +258,9 @@ final class UsageSnapshotMonitorTests: XCTestCase {
             timerFactory: timers
         )
 
-        monitor.refreshIntervalMinutes = 15
+        monitor.refreshIntervalSeconds = 900
 
-        XCTAssertEqual(defaults.integer(forKey: UsageSnapshotMonitor.DefaultsKey.refreshIntervalMinutes), 15)
+        XCTAssertEqual(defaults.integer(forKey: UsageSnapshotMonitor.DefaultsKey.refreshIntervalSeconds), 900)
         XCTAssertEqual(timers.scheduledIntervals, [])
 
         monitor.updateBaseURL("https://sub.example.com")

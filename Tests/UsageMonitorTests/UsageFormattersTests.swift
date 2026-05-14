@@ -17,6 +17,10 @@ final class UsageFormattersTests: XCTestCase {
             UsageFormatters.menuBarDailyUsageText(84.99, showDecimals: false),
             "$84"
         )
+        XCTAssertEqual(
+            UsageFormatters.menuBarDailyUsageText(84.99, showDecimals: true),
+            "$84.99"
+        )
     }
 
     func testBalanceFormattingUsesRemainingValue() {

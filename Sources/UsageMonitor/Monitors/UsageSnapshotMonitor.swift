@@ -1,6 +1,20 @@
 import Foundation
 import SwiftUI
 
+enum ServiceStatusLayoutMode: String, CaseIterable, Equatable {
+    case horizontalFive
+    case verticalTwo
+
+    var displayName: String {
+        switch self {
+        case .horizontalFive:
+            return "横排 5 格"
+        case .verticalTwo:
+            return "竖排 2 格"
+        }
+    }
+}
+
 protocol RefreshTimer {
     func invalidate()
 }
@@ -37,31 +51,37 @@ final class UsageSnapshotMonitor: ObservableObject {
         static let email = "sub2api.email"
         static let selectedSubscriptionID = "sub2api.selectedSubscriptionID"
         static let apiKey = "sub2api.apiKey"
-        static let refreshIntervalMinutes = "sub2api.refreshIntervalMinutes"
         static let showMenuBarDecimals = "sub2api.showMenuBarDecimals"
+        static let refreshIntervalSeconds = "sub2api.refreshIntervalSeconds"
+        static let serviceStatusLayoutMode = "sub2api.serviceStatusLayoutMode"
         static let snapshotCache = "sub2api.snapshotCache"
     }
 
-    static let allowedRefreshIntervals = [1, 5, 15, 30, 60]
-    static let defaultRefreshInterval = 5
+    static let allowedRefreshIntervalSeconds = [1, 5, 30, 60, 300, 900, 1_800, 3_600]
+    static let defaultRefreshIntervalSeconds = 300
     static let lowBalanceAlertThresholdUSD = 10.0
     static let expiringSoonWindowDays = 7
 
     @Published private(set) var baseURLText: String
     @Published private(set) var apiKey: String
-    @Published var refreshIntervalMinutes: Int {
+    @Published var refreshIntervalSeconds: Int {
         didSet {
-            guard Self.allowedRefreshIntervals.contains(refreshIntervalMinutes) else {
-                refreshIntervalMinutes = Self.defaultRefreshInterval
+            guard Self.allowedRefreshIntervalSeconds.contains(refreshIntervalSeconds) else {
+                refreshIntervalSeconds = Self.defaultRefreshIntervalSeconds
                 return
             }
-            userDefaults.set(refreshIntervalMinutes, forKey: DefaultsKey.refreshIntervalMinutes)
+            userDefaults.set(refreshIntervalSeconds, forKey: DefaultsKey.refreshIntervalSeconds)
             scheduleTimerIfNeeded()
         }
     }
     @Published var showMenuBarDecimals: Bool {
         didSet {
             userDefaults.set(showMenuBarDecimals, forKey: DefaultsKey.showMenuBarDecimals)
+        }
+    }
+    @Published var serviceStatusLayoutMode: ServiceStatusLayoutMode {
+        didSet {
+            userDefaults.set(serviceStatusLayoutMode.rawValue, forKey: DefaultsKey.serviceStatusLayoutMode)
         }
     }
     @Published private(set) var snapshot: UsageResponse?
@@ -97,11 +117,14 @@ final class UsageSnapshotMonitor: ObservableObject {
 
         baseURLText = userDefaults.string(forKey: DefaultsKey.baseURL) ?? ""
         apiKey = userDefaults.string(forKey: DefaultsKey.apiKey) ?? ""
-        let savedInterval = userDefaults.integer(forKey: DefaultsKey.refreshIntervalMinutes)
-        refreshIntervalMinutes = Self.allowedRefreshIntervals.contains(savedInterval)
+        let savedInterval = Self.savedRefreshIntervalSeconds(from: userDefaults)
+        refreshIntervalSeconds = Self.allowedRefreshIntervalSeconds.contains(savedInterval)
             ? savedInterval
-            : Self.defaultRefreshInterval
+            : Self.defaultRefreshIntervalSeconds
         showMenuBarDecimals = userDefaults.object(forKey: DefaultsKey.showMenuBarDecimals) as? Bool ?? true
+        serviceStatusLayoutMode = ServiceStatusLayoutMode(
+            rawValue: userDefaults.string(forKey: DefaultsKey.serviceStatusLayoutMode) ?? ""
+        ) ?? .horizontalFive
 
         migrateOldLoginStorage()
         restorePersistedSnapshotIfNeeded()
@@ -547,7 +570,7 @@ final class UsageSnapshotMonitor: ObservableObject {
             return
         }
 
-        refreshTimer = timerFactory.schedule(interval: TimeInterval(refreshIntervalMinutes * 60)) { [weak self] in
+        refreshTimer = timerFactory.schedule(interval: TimeInterval(refreshIntervalSeconds)) { [weak self] in
             Task { @MainActor in
                 await self?.refreshFromTimer()
             }
@@ -557,6 +580,28 @@ final class UsageSnapshotMonitor: ObservableObject {
     private func migrateOldLoginStorage() {
         userDefaults.removeObject(forKey: DefaultsKey.email)
         userDefaults.removeObject(forKey: DefaultsKey.selectedSubscriptionID)
+    }
+}
+
+private extension UsageSnapshotMonitor {
+    static let legacyRefreshIntervalMinutesKey = "sub2api.refreshIntervalMinutes"
+
+    static func savedRefreshIntervalSeconds(from userDefaults: UserDefaults) -> Int {
+        if let savedSeconds = userDefaults.object(forKey: DefaultsKey.refreshIntervalSeconds) as? Int {
+            return savedSeconds
+        }
+
+        let legacyMinutes = userDefaults.integer(forKey: Self.legacyRefreshIntervalMinutesKey)
+        guard legacyMinutes > 0 else {
+            return Self.defaultRefreshIntervalSeconds
+        }
+
+        let legacySeconds = legacyMinutes * 60
+        if Self.allowedRefreshIntervalSeconds.contains(legacySeconds) {
+            userDefaults.set(legacySeconds, forKey: DefaultsKey.refreshIntervalSeconds)
+        }
+        userDefaults.removeObject(forKey: Self.legacyRefreshIntervalMinutesKey)
+        return legacySeconds
     }
 }
 

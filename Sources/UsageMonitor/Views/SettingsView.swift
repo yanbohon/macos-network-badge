@@ -107,14 +107,6 @@ struct SettingsView: View {
         }
     }
 
-    private var displaySection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            sectionTitle("显示")
-
-            Toggle("菜单栏显示小数点", isOn: $monitor.showMenuBarDecimals)
-        }
-    }
-
     private var refreshSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle("刷新")
@@ -122,9 +114,9 @@ struct SettingsView: View {
             HStack(alignment: .firstTextBaseline) {
                 Text("刷新间隔")
                 Spacer(minLength: 12)
-                Picker("刷新间隔", selection: $monitor.refreshIntervalMinutes) {
-                    ForEach(UsageSnapshotMonitor.allowedRefreshIntervals, id: \.self) { minutes in
-                        Text("\(minutes) 分钟").tag(minutes)
+                Picker("刷新间隔", selection: $monitor.refreshIntervalSeconds) {
+                    ForEach(UsageSnapshotMonitor.allowedRefreshIntervalSeconds, id: \.self) { seconds in
+                        Text(refreshIntervalLabel(seconds: seconds)).tag(seconds)
                     }
                 }
                 .labelsHidden()
@@ -139,6 +131,26 @@ struct SettingsView: View {
             }
             .buttonStyle(.bordered)
             .disabled(monitor.isRefreshing)
+        }
+    }
+
+    private var displaySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("显示")
+
+            Toggle("菜单栏显示小数点", isOn: $monitor.showMenuBarDecimals)
+
+            HStack(alignment: .firstTextBaseline) {
+                Text("在线状态")
+                Spacer(minLength: 12)
+                Picker("在线状态", selection: $monitor.serviceStatusLayoutMode) {
+                    ForEach(ServiceStatusLayoutMode.allCases, id: \.self) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+            }
         }
     }
 
@@ -254,6 +266,13 @@ struct SettingsView: View {
         Text(title)
             .font(.headline.weight(.semibold))
             .foregroundStyle(.primary)
+    }
+
+    private func refreshIntervalLabel(seconds: Int) -> String {
+        if seconds < 60 {
+            return "\(seconds) 秒"
+        }
+        return "\(seconds / 60) 分钟"
     }
 
     private func validateAndRefresh() async {
