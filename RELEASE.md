@@ -15,6 +15,8 @@ git push -u origin release/v2.0.0
 
 The workflow validates the version, stamps `Resources/Info.plist`, runs `swift test`, builds `UsageMonitor.app`, creates `UsageMonitor.dmg`, publishes a GitHub Release, and opens a merge-back PR.
 
+Version tags with a prerelease suffix such as `v2.1.0-beta.1` are published as GitHub prereleases automatically. Manual dispatch can still override the prerelease flag when needed.
+
 ## Manual Dispatch
 
 Use **Actions > Release > Run workflow**, enter a semver version, and choose draft or prerelease flags if needed.

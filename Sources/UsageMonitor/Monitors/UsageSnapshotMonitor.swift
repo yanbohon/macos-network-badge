@@ -135,13 +135,6 @@ final class UsageSnapshotMonitor: ObservableObject {
         return "未刷新"
     }
 
-    var menuBarColor: Color {
-        if canShowSnapshotData, snapshotFreshness == .fresh {
-            return healthState.swiftUIColor
-        }
-        return .secondary
-    }
-
     var balanceText: String {
         if canShowSnapshotData, let snapshot {
             return UsageFormatters.balanceText(snapshot.remaining)
