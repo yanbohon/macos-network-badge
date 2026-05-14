@@ -8,6 +8,9 @@ final class StatusBarController: NSObject {
     static let verticalPadding: CGFloat = 1
     static let textWidthSlack: CGFloat = 3
     static let horizontalTextHeightSlack: CGFloat = 2
+    static let horizontalContentOffsetY: CGFloat = -1
+    static let verticalStatusOffsetY: CGFloat = 0
+    static let verticalTextOffsetY: CGFloat = -1
     static let statusTextSpacing: CGFloat = 5
     static let maximumStatusCellCount = 6
     private static let titleFont = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
@@ -98,8 +101,29 @@ final class StatusBarController: NSObject {
         let textHeight = ceil(labelSize.height) + horizontalTextHeightSlack
         return NSRect(
             x: contentRect.minX + horizontalTextOffsetX(for: displayText, layoutMode: layoutMode),
-            y: contentRect.minY + floor((bottomSectionHeight - textHeight) / 2),
+            y: contentRect.minY + floor((bottomSectionHeight - textHeight) / 2) + horizontalContentOffsetY,
             width: contentRect.width,
+            height: textHeight
+        )
+    }
+
+    static func verticalGridY(in contentRect: NSRect, stackHeight: CGFloat) -> CGFloat {
+        contentRect.minY + floor((contentRect.height - stackHeight) / 2) + verticalStatusOffsetY
+    }
+
+    static func verticalTextFrame(
+        in contentRect: NSRect,
+        labelSize: NSSize,
+        gridX: CGFloat,
+        layoutMode: ServiceStatusLayoutMode,
+        showMenuBarDecimals: Bool
+    ) -> NSRect {
+        let statusWidth = statusStripWidth(for: layoutMode, showMenuBarDecimals: showMenuBarDecimals)
+        let textHeight = ceil(labelSize.height) + horizontalTextHeightSlack
+        return NSRect(
+            x: gridX + statusWidth + statusTextSpacing,
+            y: contentRect.minY + floor((contentRect.height - textHeight) / 2) + verticalTextOffsetY,
+            width: max(0, contentRect.width - statusWidth - statusTextSpacing),
             height: textHeight
         )
     }
@@ -240,6 +264,7 @@ private final class StatusBarBadgeView: NSView {
             let bottomSectionHeight = max(0, contentRect.height - topSectionHeight)
             let gridY = contentRect.maxY - topSectionHeight
                 + floor((topSectionHeight - MenuBarTitleView.statusCellSize.height) / 2)
+                + StatusBarController.horizontalContentOffsetY
             let gridX = contentRect.minX
                 + floor(
                     (
@@ -273,7 +298,7 @@ private final class StatusBarBadgeView: NSView {
             )
         case .verticalTwo:
             let stackHeight = StatusBarController.statusStackHeight(for: layoutMode, showMenuBarDecimals: showMenuBarDecimals)
-            let gridY = contentRect.minY + floor((contentRect.height - stackHeight) / 2)
+            let gridY = StatusBarController.verticalGridY(in: contentRect, stackHeight: stackHeight)
             let gridX = contentRect.minX
 
             for (index, indicatorView) in indicatorViews.enumerated() {
@@ -293,19 +318,12 @@ private final class StatusBarBadgeView: NSView {
             }
 
             textView.alignment = .left
-            textView.textRect = NSRect(
-                x: gridX
-                    + StatusBarController.statusStripWidth(for: layoutMode, showMenuBarDecimals: showMenuBarDecimals)
-                    + StatusBarController.statusTextSpacing,
-                y: contentRect.minY
-                    + floor((contentRect.height - ceil(labelSize.height) - StatusBarController.horizontalTextHeightSlack) / 2),
-                width: max(
-                    0,
-                    contentRect.width
-                        - StatusBarController.statusStripWidth(for: layoutMode, showMenuBarDecimals: showMenuBarDecimals)
-                        - StatusBarController.statusTextSpacing
-                ),
-                height: ceil(labelSize.height) + StatusBarController.horizontalTextHeightSlack
+            textView.textRect = StatusBarController.verticalTextFrame(
+                in: contentRect,
+                labelSize: labelSize,
+                gridX: gridX,
+                layoutMode: layoutMode,
+                showMenuBarDecimals: showMenuBarDecimals
             )
         }
     }

@@ -43,6 +43,7 @@ final class StatusBarControllerTests: XCTestCase {
         XCTAssertEqual(StatusBarController.verticalPadding, 1)
         XCTAssertEqual(StatusBarController.textWidthSlack, 3)
         XCTAssertEqual(StatusBarController.horizontalTextHeightSlack, 2)
+        XCTAssertEqual(StatusBarController.horizontalContentOffsetY, -1)
 
         let minimumGridWidth =
             CGFloat(6) * MenuBarTitleView.statusCellSize.width
@@ -110,6 +111,30 @@ final class StatusBarControllerTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(verticalWidth, expectedMinimumWidth)
     }
 
+    func testVerticalLayoutUsesOpticalContentOffset() {
+        XCTAssertEqual(StatusBarController.verticalStatusOffsetY, 0)
+        XCTAssertEqual(StatusBarController.verticalTextOffsetY, -1)
+
+        let contentRect = NSRect(x: 1, y: 1, width: 46, height: 20)
+        let gridY = StatusBarController.verticalGridY(
+            in: contentRect,
+            stackHeight: 10
+        )
+        let textFrame = StatusBarController.verticalTextFrame(
+            in: contentRect,
+            labelSize: NSSize(width: 23, height: 15),
+            gridX: 1,
+            layoutMode: .verticalTwo,
+            showMenuBarDecimals: true
+        )
+
+        XCTAssertEqual(gridY, 6)
+        XCTAssertEqual(textFrame.minX, 10)
+        XCTAssertEqual(textFrame.minY, 1)
+        XCTAssertEqual(textFrame.width, 37)
+        XCTAssertEqual(textFrame.height, 17)
+    }
+
     func testHorizontalCurrencyTextUsesOpticalLeftOffsetOnlyForDollarValues() {
         XCTAssertEqual(
             StatusBarController.horizontalTextOffsetX(for: "$13", layoutMode: .horizontalFive),
@@ -135,7 +160,7 @@ final class StatusBarControllerTests: XCTestCase {
         )
 
         XCTAssertEqual(frame.height, 17)
-        XCTAssertEqual(frame.minY, 0)
+        XCTAssertEqual(frame.minY, -1)
         XCTAssertEqual(frame.width, 46)
     }
 
