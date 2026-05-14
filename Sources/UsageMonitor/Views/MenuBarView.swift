@@ -134,20 +134,6 @@ struct MenuBarView: View {
             }
 
             serviceStatusFooter
-
-            if let rawJSONText = serviceStatusMonitor.rawJSONText {
-                DisclosureGroup("原始响应 JSON") {
-                    ScrollView {
-                        Text(rawJSONText)
-                            .font(.system(.caption2, design: .monospaced))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .frame(maxHeight: 160)
-                    .padding(.top, 4)
-                }
-                .font(.caption)
-            }
         }
         .padding(.vertical, 2)
     }
