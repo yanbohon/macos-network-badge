@@ -1,6 +1,122 @@
 import Foundation
 import CryptoKit
 
+enum UsageKeyBaseURLMode: String, Codable, CaseIterable, Equatable {
+    case inherited
+    case independent
+
+    var displayName: String {
+        switch self {
+        case .inherited:
+            return "继承全局 Base URL"
+        case .independent:
+            return "独立 Base URL"
+        }
+    }
+}
+
+struct UsageKeyConfiguration: Codable, Equatable, Identifiable {
+    static let defaultSymbolName = "key.fill"
+
+    let id: String
+    var name: String
+    var symbolName: String
+    var apiKey: String
+    var baseURLMode: UsageKeyBaseURLMode
+    var baseURLOverride: String
+
+    init(
+        id: String = UUID().uuidString,
+        name: String,
+        symbolName: String = Self.defaultSymbolName,
+        apiKey: String = "",
+        baseURLMode: UsageKeyBaseURLMode = .inherited,
+        baseURLOverride: String = ""
+    ) {
+        self.id = id
+        self.name = name
+        self.symbolName = symbolName
+        self.apiKey = apiKey
+        self.baseURLMode = baseURLMode
+        self.baseURLOverride = baseURLOverride
+    }
+
+    func normalized(index: Int) -> UsageKeyConfiguration {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedSymbol = symbolName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedOverride = baseURLMode == .independent
+            ? Self.normalizedBaseURL(baseURLOverride)
+            : ""
+        return UsageKeyConfiguration(
+            id: id,
+            name: trimmedName.isEmpty ? "Key \(index + 1)" : trimmedName,
+            symbolName: trimmedSymbol.isEmpty ? Self.defaultSymbolName : trimmedSymbol,
+            apiKey: apiKey.trimmingCharacters(in: .whitespacesAndNewlines),
+            baseURLMode: baseURLMode,
+            baseURLOverride: normalizedOverride
+        )
+    }
+
+    func resolvedBaseURLText(defaultBaseURL: String) -> String {
+        switch baseURLMode {
+        case .inherited:
+            return Self.normalizedBaseURL(defaultBaseURL)
+        case .independent:
+            return Self.normalizedBaseURL(baseURLOverride)
+        }
+    }
+
+    static func normalizedBaseURL(_ value: String) -> String {
+        var normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        while normalized.hasSuffix("/") {
+            normalized.removeLast()
+        }
+        return normalized
+    }
+}
+
+struct UsageKeyEntry: Equatable, Identifiable {
+    var configuration: UsageKeyConfiguration
+    var snapshot: UsageResponse?
+    var lastSuccessfulRefresh: Date?
+    var lastError: String?
+    var lastFailureKind: UsageRefreshFailureKind?
+    var isRefreshing: Bool
+    var authState: UsageAuthState
+    var snapshotFreshness: UsageSnapshotFreshness
+    var thresholdAlertState: UsageThresholdAlertState?
+
+    init(
+        configuration: UsageKeyConfiguration,
+        snapshot: UsageResponse? = nil,
+        lastSuccessfulRefresh: Date? = nil,
+        lastError: String? = nil,
+        lastFailureKind: UsageRefreshFailureKind? = nil,
+        isRefreshing: Bool = false,
+        authState: UsageAuthState = .notConfigured,
+        snapshotFreshness: UsageSnapshotFreshness = .empty,
+        thresholdAlertState: UsageThresholdAlertState? = nil
+    ) {
+        self.configuration = configuration
+        self.snapshot = snapshot
+        self.lastSuccessfulRefresh = lastSuccessfulRefresh
+        self.lastError = lastError
+        self.lastFailureKind = lastFailureKind
+        self.isRefreshing = isRefreshing
+        self.authState = authState
+        self.snapshotFreshness = snapshotFreshness
+        self.thresholdAlertState = thresholdAlertState
+    }
+
+    var id: String {
+        configuration.id
+    }
+
+    var canShowSnapshotData: Bool {
+        snapshot != nil && snapshotFreshness != .configurationMismatch
+    }
+}
+
 struct UsageConfigurationFingerprint: Codable, Equatable {
     let normalizedBaseURL: String
     let apiKeyFingerprint: String
@@ -11,7 +127,7 @@ struct UsageConfigurationFingerprint: Codable, Equatable {
     }
 
     static func make(baseURLText: String, apiKey: String) -> UsageConfigurationFingerprint? {
-        let normalizedBaseURL = normalizeBaseURL(baseURLText)
+        let normalizedBaseURL = UsageKeyConfiguration.normalizedBaseURL(baseURLText)
         guard
             !normalizedBaseURL.isEmpty,
             isValidBaseURL(normalizedBaseURL),
@@ -26,15 +142,7 @@ struct UsageConfigurationFingerprint: Codable, Equatable {
         )
     }
 
-    private static func normalizeBaseURL(_ value: String) -> String {
-        var normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        while normalized.hasSuffix("/") {
-            normalized.removeLast()
-        }
-        return normalized
-    }
-
-    private static func isValidBaseURL(_ value: String) -> Bool {
+    static func isValidBaseURL(_ value: String) -> Bool {
         guard
             let url = URL(string: value),
             let scheme = url.scheme?.lowercased(),
@@ -168,6 +276,23 @@ struct UsageSnapshotCacheEntry: Codable, Equatable {
     let snapshot: UsageResponse
 }
 
+struct KeyedUsageSnapshotCacheEntry: Codable, Equatable {
+    let keyID: String
+    let configurationFingerprint: UsageConfigurationFingerprint
+    let savedAt: Date
+    let lastSuccessfulRefreshAt: Date
+    let snapshot: UsageResponse
+
+    var legacyEntry: UsageSnapshotCacheEntry {
+        UsageSnapshotCacheEntry(
+            configurationFingerprint: configurationFingerprint,
+            savedAt: savedAt,
+            lastSuccessfulRefreshAt: lastSuccessfulRefreshAt,
+            snapshot: snapshot
+        )
+    }
+}
+
 final class UsageSnapshotCacheStore {
     private let userDefaults: UserDefaults
     private let key: String
@@ -177,14 +302,32 @@ final class UsageSnapshotCacheStore {
         self.key = key
     }
 
-    func load() -> UsageSnapshotCacheEntry? {
+    func loadLegacyEntry() -> UsageSnapshotCacheEntry? {
         guard let data = userDefaults.data(forKey: key) else { return nil }
         return try? JSONDecoder.sub2api.decode(UsageSnapshotCacheEntry.self, from: data)
     }
 
-    func save(_ entry: UsageSnapshotCacheEntry) {
-        guard let data = try? JSONEncoder.sub2api.encode(entry) else { return }
+    func loadKeyedEntries() -> [String: UsageSnapshotCacheEntry] {
+        guard let data = userDefaults.data(forKey: key) else { return [:] }
+        if let keyedEntries = try? JSONDecoder.sub2api.decode([KeyedUsageSnapshotCacheEntry].self, from: data) {
+            return Dictionary(uniqueKeysWithValues: keyedEntries.map { ($0.keyID, $0.legacyEntry) })
+        }
+        return [:]
+    }
+
+    func save(_ entry: UsageSnapshotCacheEntry, for keyID: String) {
+        var entries = loadKeyedEntries()
+        entries[keyID] = entry
+        let keyedEntries = entries.map { keyID, entry in
+            KeyedUsageSnapshotCacheEntry(
+                keyID: keyID,
+                configurationFingerprint: entry.configurationFingerprint,
+                savedAt: entry.savedAt,
+                lastSuccessfulRefreshAt: entry.lastSuccessfulRefreshAt,
+                snapshot: entry.snapshot
+            )
+        }
+        guard let data = try? JSONEncoder.sub2api.encode(keyedEntries) else { return }
         userDefaults.set(data, forKey: key)
     }
 }
-

@@ -2,13 +2,10 @@ import Foundation
 import SwiftUI
 
 enum ServiceStatusLayoutMode: String, CaseIterable, Equatable {
-    case horizontalFive
     case verticalTwo
 
     var displayName: String {
         switch self {
-        case .horizontalFive:
-            return "横排 5 格"
         case .verticalTwo:
             return "竖排 2 格"
         }
@@ -55,6 +52,7 @@ final class UsageSnapshotMonitor: ObservableObject {
         static let refreshIntervalSeconds = "sub2api.refreshIntervalSeconds"
         static let serviceStatusLayoutMode = "sub2api.serviceStatusLayoutMode"
         static let snapshotCache = "sub2api.snapshotCache"
+        static let usageKeys = "sub2api.usageKeys"
     }
 
     static let allowedRefreshIntervalSeconds = [1, 5, 30, 60, 300, 900, 1_800, 3_600]
@@ -62,8 +60,8 @@ final class UsageSnapshotMonitor: ObservableObject {
     static let lowBalanceAlertThresholdUSD = 10.0
     static let expiringSoonWindowDays = 7
 
-    @Published private(set) var baseURLText: String
-    @Published private(set) var apiKey: String
+    @Published private(set) var defaultBaseURLText: String
+    @Published private(set) var usageKeys: [UsageKeyEntry]
     @Published var refreshIntervalSeconds: Int {
         didSet {
             guard Self.allowedRefreshIntervalSeconds.contains(refreshIntervalSeconds) else {
@@ -81,17 +79,12 @@ final class UsageSnapshotMonitor: ObservableObject {
     }
     @Published var serviceStatusLayoutMode: ServiceStatusLayoutMode {
         didSet {
-            userDefaults.set(serviceStatusLayoutMode.rawValue, forKey: DefaultsKey.serviceStatusLayoutMode)
+            userDefaults.set(ServiceStatusLayoutMode.verticalTwo.rawValue, forKey: DefaultsKey.serviceStatusLayoutMode)
+            if serviceStatusLayoutMode != .verticalTwo {
+                serviceStatusLayoutMode = .verticalTwo
+            }
         }
     }
-    @Published private(set) var snapshot: UsageResponse?
-    @Published private(set) var lastSuccessfulRefresh: Date?
-    @Published private(set) var lastError: String?
-    @Published private(set) var lastFailureKind: UsageRefreshFailureKind?
-    @Published private(set) var isRefreshing = false
-    @Published private(set) var authState: UsageAuthState = .notConfigured
-    @Published private(set) var snapshotFreshness: UsageSnapshotFreshness = .empty
-    @Published private(set) var thresholdAlertState: UsageThresholdAlertState?
 
     private let userDefaults: UserDefaults
     private let client: Sub2APIClient
@@ -99,9 +92,9 @@ final class UsageSnapshotMonitor: ObservableObject {
     private let cacheStore: UsageSnapshotCacheStore
     private let now: () -> Date
     private var refreshTimer: RefreshTimer?
-    private var refreshTask: Task<UsageResponse, Error>?
+    private var refreshTasks: [String: Task<UsageResponse, Error>] = [:]
     private var hasStarted = false
-    private var lastAlertSignature: [UsageThresholdAlertKind]?
+    private var lastAlertSignatures: [String: [UsageThresholdAlertKind]] = [:]
 
     init(
         userDefaults: UserDefaults = .standard,
@@ -115,58 +108,90 @@ final class UsageSnapshotMonitor: ObservableObject {
         self.now = now
         cacheStore = UsageSnapshotCacheStore(userDefaults: userDefaults, key: DefaultsKey.snapshotCache)
 
-        baseURLText = userDefaults.string(forKey: DefaultsKey.baseURL) ?? ""
-        apiKey = userDefaults.string(forKey: DefaultsKey.apiKey) ?? ""
+        defaultBaseURLText = UsageKeyConfiguration.normalizedBaseURL(
+            userDefaults.string(forKey: DefaultsKey.baseURL) ?? ""
+        )
         let savedInterval = Self.savedRefreshIntervalSeconds(from: userDefaults)
         refreshIntervalSeconds = Self.allowedRefreshIntervalSeconds.contains(savedInterval)
             ? savedInterval
             : Self.defaultRefreshIntervalSeconds
         showMenuBarDecimals = userDefaults.object(forKey: DefaultsKey.showMenuBarDecimals) as? Bool ?? true
-        serviceStatusLayoutMode = ServiceStatusLayoutMode(
-            rawValue: userDefaults.string(forKey: DefaultsKey.serviceStatusLayoutMode) ?? ""
-        ) ?? .horizontalFive
+        serviceStatusLayoutMode = .verticalTwo
+        usageKeys = []
 
         migrateOldLoginStorage()
-        restorePersistedSnapshotIfNeeded()
+        migrateServiceStatusLayoutPreference()
+        usageKeys = loadUsageKeys()
+        restorePersistedSnapshotsIfNeeded()
         scheduleTimerIfNeeded()
     }
 
+    var baseURLText: String {
+        defaultBaseURLText
+    }
+
+    var apiKey: String {
+        usageKeys.first?.configuration.apiKey ?? ""
+    }
+
+    var snapshot: UsageResponse? {
+        usageKeys.first?.snapshot
+    }
+
+    var lastSuccessfulRefresh: Date? {
+        usageKeys.first?.lastSuccessfulRefresh
+    }
+
+    var lastError: String? {
+        usageKeys.first?.lastError
+    }
+
+    var lastFailureKind: UsageRefreshFailureKind? {
+        usageKeys.first?.lastFailureKind
+    }
+
+    var isRefreshing: Bool {
+        usageKeys.contains { $0.isRefreshing }
+    }
+
+    var authState: UsageAuthState {
+        usageKeys.first?.authState ?? .notConfigured
+    }
+
+    var snapshotFreshness: UsageSnapshotFreshness {
+        usageKeys.first?.snapshotFreshness ?? .empty
+    }
+
+    var thresholdAlertState: UsageThresholdAlertState? {
+        usageKeys.first?.thresholdAlertState
+    }
+
     var menuBarText: String {
-        if let snapshot, canShowSnapshotData {
-            return UsageFormatters.menuBarDailyUsageText(
-                snapshot.subscription.dailyUsageUSD,
-                showDecimals: showMenuBarDecimals
+        menuBarKeyRows.map(\.text).joined(separator: " ")
+    }
+
+    var menuBarKeyRows: [MenuBarKeyDisplayRow] {
+        usageKeys.map { entry in
+            MenuBarKeyDisplayRow(
+                id: entry.id,
+                name: entry.configuration.name,
+                symbolName: entry.configuration.symbolName,
+                text: menuBarText(for: entry)
             )
         }
-
-        guard currentConfigurationFingerprint != nil else {
-            return "未配置"
-        }
-
-        if snapshotFreshness == .configurationMismatch {
-            return "未验证"
-        }
-
-        if let lastFailureKind, lastFailureKind == .unauthorized {
-            return "未授权"
-        }
-
-        if lastError != nil {
-            return lastFailureKind?.stateTextWithoutCache ?? "刷新失败"
-        }
-
-        return "未刷新"
     }
 
     var balanceText: String {
-        if canShowSnapshotData, let snapshot {
-            return UsageFormatters.balanceText(snapshot.remaining)
+        guard let entry = usageKeys.first, entry.canShowSnapshotData, let snapshot = entry.snapshot else {
+            return "--"
         }
-        return "--"
+        return UsageFormatters.balanceText(snapshot.remaining)
     }
 
     var healthState: UsageHealthState {
-        guard canShowSnapshotData, let snapshot else { return .normal }
+        guard let entry = usageKeys.first, entry.canShowSnapshotData, let snapshot = entry.snapshot else {
+            return .normal
+        }
         return UsageFormatters.healthState(
             used: snapshot.subscription.dailyUsageUSD,
             limit: snapshot.subscription.dailyLimitUSD
@@ -174,64 +199,107 @@ final class UsageSnapshotMonitor: ObservableObject {
     }
 
     var statusLineText: String {
-        if isRefreshing {
-            return "正在刷新"
-        }
-
-        switch snapshotFreshness {
-        case .fresh:
-            return "数据已刷新"
-        case .stale:
-            if let lastFailureKind {
-                return lastFailureKind.stateTextWhenCached
-            }
-            return "缓存数据（等待刷新）"
-        case .configurationMismatch:
-            return "配置已变更，未验证"
-        case .empty:
-            if currentConfigurationFingerprint == nil {
-                return "未配置"
-            }
-            if let lastFailureKind {
-                return lastFailureKind.stateTextWithoutCache
-            }
-            return "未刷新"
-        }
+        guard let first = usageKeys.first else { return "未配置" }
+        return statusLineText(for: first)
     }
 
     var statusDetailText: String? {
-        lastError
+        usageKeys.first?.lastError
     }
 
     var alertMessages: [String] {
-        thresholdAlertState?.messages ?? []
+        usageKeys.first?.thresholdAlertState?.messages ?? []
     }
 
     var canShowSnapshotData: Bool {
-        snapshot != nil && snapshotFreshness != .configurationMismatch
+        usageKeys.first?.canShowSnapshotData ?? false
+    }
+
+    func keyState(id: String) -> UsageKeyEntry? {
+        usageKeys.first { $0.id == id }
     }
 
     func updateBaseURL(_ value: String) {
-        let previousFingerprint = currentConfigurationFingerprint
-        var normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        while normalized.hasSuffix("/") {
-            normalized.removeLast()
-        }
-        baseURLText = normalized
+        let previousFingerprints = keyFingerprintsByID()
+        let normalized = UsageKeyConfiguration.normalizedBaseURL(value)
+        defaultBaseURLText = normalized
         userDefaults.set(normalized, forKey: DefaultsKey.baseURL)
-        reconcileConfigurationChange(previousFingerprint: previousFingerprint)
+        reconcileConfigurationChanges(previousFingerprints: previousFingerprints)
     }
 
     func updateAPIKey(_ value: String) {
-        let previousFingerprint = currentConfigurationFingerprint
-        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        apiKey = normalized
-        if normalized.isEmpty {
-            userDefaults.removeObject(forKey: DefaultsKey.apiKey)
-        } else {
-            userDefaults.set(normalized, forKey: DefaultsKey.apiKey)
+        guard let first = usageKeys.first else { return }
+        updateKeyConfiguration(
+            id: first.id,
+            name: first.configuration.name,
+            symbolName: first.configuration.symbolName,
+            apiKey: value,
+            baseURLMode: first.configuration.baseURLMode,
+            baseURLOverride: first.configuration.baseURLOverride
+        )
+    }
+
+    @discardableResult
+    func addKey() -> String {
+        let keyID = UUID().uuidString
+        let nextIndex = usageKeys.count
+        let entry = UsageKeyEntry(
+            configuration: UsageKeyConfiguration(
+                id: keyID,
+                name: "Key \(nextIndex + 1)",
+                symbolName: UsageKeyConfiguration.defaultSymbolName,
+                apiKey: "",
+                baseURLMode: .inherited,
+                baseURLOverride: ""
+            ),
+            authState: .notConfigured,
+            snapshotFreshness: .empty
+        )
+        usageKeys.append(entry)
+        persistUsageKeys()
+        scheduleTimerIfNeeded()
+        return keyID
+    }
+
+    func deleteKey(id: String) {
+        guard usageKeys.count > 1 else { return }
+        refreshTasks[id]?.cancel()
+        refreshTasks[id] = nil
+        usageKeys.removeAll { $0.id == id }
+        persistUsageKeys()
+        scheduleTimerIfNeeded()
+    }
+
+    func updateKeyConfiguration(
+        id: String,
+        name: String,
+        symbolName: String,
+        apiKey: String,
+        baseURLMode: UsageKeyBaseURLMode,
+        baseURLOverride: String
+    ) {
+        guard let index = usageKeys.firstIndex(where: { $0.id == id }) else { return }
+        let previousFingerprint = fingerprint(for: usageKeys[index].configuration)
+        let nextConfiguration = UsageKeyConfiguration(
+            id: id,
+            name: name,
+            symbolName: symbolName,
+            apiKey: apiKey,
+            baseURLMode: baseURLMode,
+            baseURLOverride: baseURLOverride
+        ).normalized(index: index)
+
+        usageKeys[index].configuration = nextConfiguration
+        if index == 0 {
+            if nextConfiguration.apiKey.isEmpty {
+                userDefaults.removeObject(forKey: DefaultsKey.apiKey)
+            } else {
+                userDefaults.set(nextConfiguration.apiKey, forKey: DefaultsKey.apiKey)
+            }
         }
-        reconcileConfigurationChange(previousFingerprint: previousFingerprint)
+        reconcileConfigurationChange(for: index, previousFingerprint: previousFingerprint)
+        persistUsageKeys()
+        scheduleTimerIfNeeded()
     }
 
     func start() {
@@ -243,89 +311,108 @@ final class UsageSnapshotMonitor: ObservableObject {
     }
 
     func validateAndRefresh() async throws {
-        try await performRefresh(configurationRequired: true)
+        guard let firstID = usageKeys.first?.id else { throw UsageValidationError.missingAPIKey }
+        try await refreshKey(id: firstID, configurationRequired: true)
+    }
+
+    func validateAndRefreshKey(id: String) async throws {
+        try await refreshKey(id: id, configurationRequired: true)
     }
 
     func refreshNow() async {
+        guard let firstID = usageKeys.first?.id else { return }
         do {
-            try await performRefresh(configurationRequired: true)
+            try await refreshKey(id: firstID, configurationRequired: true)
         } catch {
             // The monitor state already contains the user-facing failure.
         }
     }
 
-    private func refreshOnLaunch() async {
-        guard currentConfigurationFingerprint != nil else {
-            return
-        }
+    func refreshCurrentKey(id: String) async {
         do {
-            try await performRefresh(configurationRequired: false)
+            try await refreshKey(id: id, configurationRequired: true)
         } catch {
-            // Launch refresh failures are reflected in published state.
+            // The monitor state already contains the user-facing failure.
         }
+    }
+
+    func refreshAll(configurationRequired: Bool = true) async {
+        for id in usageKeys.map(\.id) {
+            do {
+                try await refreshKey(id: id, configurationRequired: configurationRequired)
+            } catch {
+                // Per-key failures are recorded on the entry and must not stop other keys.
+            }
+        }
+    }
+
+    func resolvedBaseURLText(for configuration: UsageKeyConfiguration) -> String {
+        configuration.resolvedBaseURLText(defaultBaseURL: defaultBaseURLText)
+    }
+
+    private func refreshOnLaunch() async {
+        await refreshAll(configurationRequired: false)
     }
 
     private func refreshFromTimer() async {
-        guard currentConfigurationFingerprint != nil else {
-            return
-        }
-        do {
-            try await performRefresh(configurationRequired: false)
-        } catch {
-            // Timer refresh failures are reflected in published state.
-        }
+        await refreshAll(configurationRequired: false)
     }
 
-    private func performRefresh(configurationRequired: Bool) async throws {
-        if let refreshTask {
-            _ = try await refreshTask.value
+    private func refreshKey(id: String, configurationRequired: Bool) async throws {
+        guard let index = usageKeys.firstIndex(where: { $0.id == id }) else { return }
+        if let task = refreshTasks[id] {
+            _ = try await task.value
             return
         }
 
-        if let validationError = validationErrorForCurrentConfiguration() {
+        let configuration = usageKeys[index].configuration
+        if let validationError = validationError(for: configuration) {
             if configurationRequired {
-                applyValidationFailure(validationError)
+                applyValidationFailure(validationError, for: id)
                 throw validationError
             }
             return
         }
 
         guard
-            let baseURL = validatedBaseURL(),
-            let fingerprint = currentConfigurationFingerprint
+            let baseURL = validatedBaseURL(for: configuration),
+            let fingerprint = fingerprint(for: configuration)
         else {
             if configurationRequired {
-                let error = validationErrorForCurrentConfiguration() ?? UsageValidationError.missingBaseURL
-                applyValidationFailure(error)
+                let error = validationError(for: configuration) ?? UsageValidationError.missingBaseURL
+                applyValidationFailure(error, for: id)
                 throw error
             }
             return
         }
 
-        let apiKeySnapshot = apiKey
+        let apiKeySnapshot = configuration.apiKey
         let task: Task<UsageResponse, Error> = Task { [client] in
             try await client.usage(baseURL: baseURL, apiKey: apiKeySnapshot)
         }
-        refreshTask = task
-        isRefreshing = true
+        refreshTasks[id] = task
+        usageKeys[index].isRefreshing = true
 
         defer {
-            refreshTask = nil
-            isRefreshing = false
+            refreshTasks[id] = nil
+            if let latestIndex = usageKeys.firstIndex(where: { $0.id == id }) {
+                usageKeys[latestIndex].isRefreshing = false
+            }
         }
 
         do {
             let response = try await task.value
-            applySuccessfulRefresh(response, fingerprint: fingerprint)
+            applySuccessfulRefresh(response, keyID: id, fingerprint: fingerprint)
         } catch {
-            applyRefreshFailure(error, fingerprint: fingerprint)
+            applyRefreshFailure(error, keyID: id, fingerprint: fingerprint)
             throw error
         }
     }
 
-    private func validatedBaseURL() -> URL? {
+    private func validatedBaseURL(for configuration: UsageKeyConfiguration) -> URL? {
+        let text = configuration.resolvedBaseURLText(defaultBaseURL: defaultBaseURLText)
         guard
-            let url = URL(string: baseURLText),
+            let url = URL(string: text),
             let scheme = url.scheme?.lowercased(),
             (scheme == "http" || scheme == "https"),
             url.host != nil
@@ -335,76 +422,92 @@ final class UsageSnapshotMonitor: ObservableObject {
         return url
     }
 
-    private var currentConfigurationFingerprint: UsageConfigurationFingerprint? {
-        UsageConfigurationFingerprint.make(baseURLText: baseURLText, apiKey: apiKey)
+    private func fingerprint(for configuration: UsageKeyConfiguration) -> UsageConfigurationFingerprint? {
+        UsageConfigurationFingerprint.make(
+            baseURLText: configuration.resolvedBaseURLText(defaultBaseURL: defaultBaseURLText),
+            apiKey: configuration.apiKey
+        )
     }
 
-    private func validationErrorForCurrentConfiguration() -> UsageValidationError? {
+    private func validationError(for configuration: UsageKeyConfiguration) -> UsageValidationError? {
+        let baseURLText = configuration.resolvedBaseURLText(defaultBaseURL: defaultBaseURLText)
         if baseURLText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return .missingBaseURL
         }
-        if validatedBaseURL() == nil {
+        if validatedBaseURL(for: configuration) == nil {
             return .invalidBaseURL
         }
-        if apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if configuration.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return .missingAPIKey
         }
         return nil
     }
 
-    private func applyValidationFailure(_ error: UsageValidationError) {
-        lastError = error.userMessage
-        lastFailureKind = .validation
-        authState = .notConfigured
+    private func applyValidationFailure(_ error: UsageValidationError, for keyID: String) {
+        guard let index = usageKeys.firstIndex(where: { $0.id == keyID }) else { return }
+        usageKeys[index].lastError = error.userMessage
+        usageKeys[index].lastFailureKind = .validation
+        usageKeys[index].authState = .notConfigured
     }
 
     private func applySuccessfulRefresh(
         _ response: UsageResponse,
+        keyID: String,
         fingerprint: UsageConfigurationFingerprint
     ) {
-        guard fingerprint == currentConfigurationFingerprint else {
+        guard
+            let index = usageKeys.firstIndex(where: { $0.id == keyID }),
+            fingerprint == self.fingerprint(for: usageKeys[index].configuration)
+        else {
             return
         }
 
         let completedAt = now()
-        snapshot = response
-        lastSuccessfulRefresh = completedAt
-        lastError = nil
-        lastFailureKind = nil
-        snapshotFreshness = .fresh
-        authState = .authenticated
-        persistSnapshot(response, fingerprint: fingerprint, savedAt: completedAt)
-        updateThresholdAlertState(for: response, isRestored: false)
+        usageKeys[index].snapshot = response
+        usageKeys[index].lastSuccessfulRefresh = completedAt
+        usageKeys[index].lastError = nil
+        usageKeys[index].lastFailureKind = nil
+        usageKeys[index].snapshotFreshness = .fresh
+        usageKeys[index].authState = .authenticated
+        persistSnapshot(response, keyID: keyID, fingerprint: fingerprint, savedAt: completedAt)
+        updateThresholdAlertState(for: response, keyID: keyID, isRestored: false)
     }
 
-    private func applyRefreshFailure(_ error: Error, fingerprint: UsageConfigurationFingerprint) {
-        guard fingerprint == currentConfigurationFingerprint else {
+    private func applyRefreshFailure(
+        _ error: Error,
+        keyID: String,
+        fingerprint: UsageConfigurationFingerprint
+    ) {
+        guard
+            let index = usageKeys.firstIndex(where: { $0.id == keyID }),
+            fingerprint == self.fingerprint(for: usageKeys[index].configuration)
+        else {
             return
         }
 
         let failureKind = failureKind(for: error)
-        lastError = userMessage(for: error)
-        lastFailureKind = failureKind
+        usageKeys[index].lastError = userMessage(for: error)
+        usageKeys[index].lastFailureKind = failureKind
 
         switch failureKind {
         case .unauthorized:
-            authState = .unauthorized
+            usageKeys[index].authState = .unauthorized
         case .validation:
-            authState = .notConfigured
+            usageKeys[index].authState = .notConfigured
         case .network, .server, .decoding, .invalidResponse, .unknown:
-            authState = snapshot == nil ? .error : .error
+            usageKeys[index].authState = .error
         }
 
-        if snapshot == nil {
-            snapshotFreshness = .empty
-            thresholdAlertState = nil
-            lastAlertSignature = nil
+        if usageKeys[index].snapshot == nil {
+            usageKeys[index].snapshotFreshness = .empty
+            usageKeys[index].thresholdAlertState = nil
+            lastAlertSignatures[keyID] = nil
             return
         }
 
-        snapshotFreshness = .stale
-        if thresholdAlertState == nil, let snapshot {
-            updateThresholdAlertState(for: snapshot, isRestored: true)
+        usageKeys[index].snapshotFreshness = .stale
+        if usageKeys[index].thresholdAlertState == nil, let snapshot = usageKeys[index].snapshot {
+            updateThresholdAlertState(for: snapshot, keyID: keyID, isRestored: true)
         }
     }
 
@@ -442,71 +545,114 @@ final class UsageSnapshotMonitor: ObservableObject {
         return "网络请求失败"
     }
 
-    private func reconcileConfigurationChange(previousFingerprint: UsageConfigurationFingerprint?) {
-        let nextFingerprint = currentConfigurationFingerprint
+    private func keyFingerprintsByID() -> [String: UsageConfigurationFingerprint?] {
+        Dictionary(uniqueKeysWithValues: usageKeys.map { ($0.id, fingerprint(for: $0.configuration)) })
+    }
 
-        lastError = nil
-        lastFailureKind = nil
-        thresholdAlertState = nil
-        lastAlertSignature = nil
+    private func reconcileConfigurationChanges(previousFingerprints: [String: UsageConfigurationFingerprint?]) {
+        for index in usageKeys.indices {
+            let configuration = usageKeys[index].configuration
+            let previousFingerprint = previousFingerprints[configuration.id] ?? nil
+            reconcileConfigurationChange(for: index, previousFingerprint: previousFingerprint)
+        }
+        scheduleTimerIfNeeded()
+    }
+
+    private func reconcileConfigurationChange(for index: Int, previousFingerprint: UsageConfigurationFingerprint?) {
+        let nextFingerprint = fingerprint(for: usageKeys[index].configuration)
+        let keyID = usageKeys[index].id
+
+        if previousFingerprint == nextFingerprint {
+            if nextFingerprint != nil, usageKeys[index].snapshot == nil {
+                usageKeys[index].snapshotFreshness = .empty
+                usageKeys[index].authState = .ready
+            }
+            return
+        }
+
+        usageKeys[index].lastError = nil
+        usageKeys[index].lastFailureKind = nil
+        usageKeys[index].thresholdAlertState = nil
+        lastAlertSignatures[keyID] = nil
 
         guard let nextFingerprint else {
-            snapshot = nil
-            lastSuccessfulRefresh = nil
-            snapshotFreshness = .empty
-            authState = .notConfigured
-            scheduleTimerIfNeeded()
+            usageKeys[index].snapshot = nil
+            usageKeys[index].lastSuccessfulRefresh = nil
+            usageKeys[index].snapshotFreshness = .empty
+            usageKeys[index].authState = .notConfigured
             return
         }
 
         if previousFingerprint == nil {
-            snapshotFreshness = .empty
-            authState = .ready
+            usageKeys[index].snapshotFreshness = usageKeys[index].snapshot == nil ? .empty : usageKeys[index].snapshotFreshness
+            usageKeys[index].authState = usageKeys[index].snapshot == nil ? .ready : usageKeys[index].authState
         } else if previousFingerprint != nextFingerprint {
-            snapshot = nil
-            lastSuccessfulRefresh = nil
-            snapshotFreshness = .configurationMismatch
-            authState = .ready
-        } else if snapshot == nil {
-            snapshotFreshness = .empty
-            authState = .ready
+            usageKeys[index].snapshot = nil
+            usageKeys[index].lastSuccessfulRefresh = nil
+            usageKeys[index].snapshotFreshness = .configurationMismatch
+            usageKeys[index].authState = .ready
+        } else if usageKeys[index].snapshot == nil {
+            usageKeys[index].snapshotFreshness = .empty
+            usageKeys[index].authState = .ready
         }
-
-        scheduleTimerIfNeeded()
     }
 
-    private func restorePersistedSnapshotIfNeeded() {
-        guard let currentFingerprint = currentConfigurationFingerprint else {
-            snapshotFreshness = .empty
-            authState = .notConfigured
-            return
-        }
+    private func restorePersistedSnapshotsIfNeeded() {
+        var keyedEntries = cacheStore.loadKeyedEntries()
+        let legacyEntry = cacheStore.loadLegacyEntry()
 
-        guard let cachedEntry = cacheStore.load() else {
-            snapshotFreshness = .empty
-            authState = .ready
-            return
-        }
+        for index in usageKeys.indices {
+            let keyID = usageKeys[index].id
+            guard let currentFingerprint = fingerprint(for: usageKeys[index].configuration) else {
+                usageKeys[index].snapshotFreshness = .empty
+                usageKeys[index].authState = .notConfigured
+                continue
+            }
 
-        guard cachedEntry.configurationFingerprint == currentFingerprint else {
-            snapshot = nil
-            lastSuccessfulRefresh = nil
-            snapshotFreshness = .configurationMismatch
-            authState = .ready
-            return
-        }
+            let cachedEntry: UsageSnapshotCacheEntry?
+            let shouldMoveLegacyEntry: Bool
+            if let keyed = keyedEntries[keyID] {
+                cachedEntry = keyed
+                shouldMoveLegacyEntry = false
+            } else if index == 0, let legacyEntry {
+                cachedEntry = legacyEntry
+                keyedEntries[keyID] = legacyEntry
+                shouldMoveLegacyEntry = true
+            } else {
+                cachedEntry = nil
+                shouldMoveLegacyEntry = false
+            }
 
-        snapshot = cachedEntry.snapshot
-        lastSuccessfulRefresh = cachedEntry.lastSuccessfulRefreshAt
-        snapshotFreshness = .stale
-        authState = .authenticated
-        lastError = nil
-        lastFailureKind = nil
-        updateThresholdAlertState(for: cachedEntry.snapshot, isRestored: true)
+            guard let cachedEntry else {
+                usageKeys[index].snapshotFreshness = .empty
+                usageKeys[index].authState = .ready
+                continue
+            }
+
+            guard cachedEntry.configurationFingerprint == currentFingerprint else {
+                usageKeys[index].snapshot = nil
+                usageKeys[index].lastSuccessfulRefresh = nil
+                usageKeys[index].snapshotFreshness = .configurationMismatch
+                usageKeys[index].authState = .ready
+                continue
+            }
+
+            usageKeys[index].snapshot = cachedEntry.snapshot
+            usageKeys[index].lastSuccessfulRefresh = cachedEntry.lastSuccessfulRefreshAt
+            usageKeys[index].snapshotFreshness = .stale
+            usageKeys[index].authState = .authenticated
+            usageKeys[index].lastError = nil
+            usageKeys[index].lastFailureKind = nil
+            updateThresholdAlertState(for: cachedEntry.snapshot, keyID: keyID, isRestored: true)
+            if shouldMoveLegacyEntry {
+                cacheStore.save(cachedEntry, for: keyID)
+            }
+        }
     }
 
     private func persistSnapshot(
         _ response: UsageResponse,
+        keyID: String,
         fingerprint: UsageConfigurationFingerprint,
         savedAt: Date
     ) {
@@ -516,20 +662,21 @@ final class UsageSnapshotMonitor: ObservableObject {
             lastSuccessfulRefreshAt: savedAt,
             snapshot: response
         )
-        cacheStore.save(entry)
+        cacheStore.save(entry, for: keyID)
     }
 
-    private func updateThresholdAlertState(for snapshot: UsageResponse, isRestored: Bool) {
+    private func updateThresholdAlertState(for snapshot: UsageResponse, keyID: String, isRestored: Bool) {
+        guard let index = usageKeys.firstIndex(where: { $0.id == keyID }) else { return }
         let kinds = thresholdAlertKinds(for: snapshot)
         guard !kinds.isEmpty else {
-            thresholdAlertState = nil
-            lastAlertSignature = nil
+            usageKeys[index].thresholdAlertState = nil
+            lastAlertSignatures[keyID] = nil
             return
         }
 
-        let isNew = !isRestored && kinds != lastAlertSignature
-        thresholdAlertState = UsageThresholdAlertState(kinds: kinds, isNew: isNew)
-        lastAlertSignature = kinds
+        let isNew = !isRestored && kinds != lastAlertSignatures[keyID]
+        usageKeys[index].thresholdAlertState = UsageThresholdAlertState(kinds: kinds, isNew: isNew)
+        lastAlertSignatures[keyID] = kinds
     }
 
     private func thresholdAlertKinds(for snapshot: UsageResponse) -> [UsageThresholdAlertKind] {
@@ -565,7 +712,7 @@ final class UsageSnapshotMonitor: ObservableObject {
 
     private func scheduleTimerIfNeeded() {
         refreshTimer?.invalidate()
-        guard currentConfigurationFingerprint != nil else {
+        guard usageKeys.contains(where: { fingerprint(for: $0.configuration) != nil }) else {
             refreshTimer = nil
             return
         }
@@ -580,6 +727,107 @@ final class UsageSnapshotMonitor: ObservableObject {
     private func migrateOldLoginStorage() {
         userDefaults.removeObject(forKey: DefaultsKey.email)
         userDefaults.removeObject(forKey: DefaultsKey.selectedSubscriptionID)
+    }
+
+    private func migrateServiceStatusLayoutPreference() {
+        userDefaults.set(ServiceStatusLayoutMode.verticalTwo.rawValue, forKey: DefaultsKey.serviceStatusLayoutMode)
+    }
+
+    private func loadUsageKeys() -> [UsageKeyEntry] {
+        let storedConfigurations: [UsageKeyConfiguration]
+        if let data = userDefaults.data(forKey: DefaultsKey.usageKeys),
+           let decoded = try? JSONDecoder.sub2api.decode([UsageKeyConfiguration].self, from: data),
+           !decoded.isEmpty {
+            storedConfigurations = decoded
+        } else {
+            let legacyKey = userDefaults.string(forKey: DefaultsKey.apiKey) ?? ""
+            storedConfigurations = [
+                UsageKeyConfiguration(
+                    name: "Key 1",
+                    symbolName: UsageKeyConfiguration.defaultSymbolName,
+                    apiKey: legacyKey,
+                    baseURLMode: .inherited,
+                    baseURLOverride: ""
+                ),
+            ]
+        }
+
+        let normalized = storedConfigurations.enumerated().map { index, configuration in
+            configuration.normalized(index: index)
+        }
+        persistUsageKeyConfigurations(normalized)
+        if let firstKey = normalized.first?.apiKey {
+            if firstKey.isEmpty {
+                userDefaults.removeObject(forKey: DefaultsKey.apiKey)
+            } else {
+                userDefaults.set(firstKey, forKey: DefaultsKey.apiKey)
+            }
+        }
+        return normalized.map { configuration in
+            UsageKeyEntry(configuration: configuration)
+        }
+    }
+
+    private func persistUsageKeys() {
+        persistUsageKeyConfigurations(usageKeys.map(\.configuration))
+    }
+
+    private func persistUsageKeyConfigurations(_ configurations: [UsageKeyConfiguration]) {
+        guard let data = try? JSONEncoder.sub2api.encode(configurations) else { return }
+        userDefaults.set(data, forKey: DefaultsKey.usageKeys)
+    }
+
+    private func menuBarText(for entry: UsageKeyEntry) -> String {
+        if let snapshot = entry.snapshot, entry.canShowSnapshotData {
+            return UsageFormatters.menuBarDailyUsageText(
+                snapshot.subscription.dailyUsageUSD,
+                showDecimals: showMenuBarDecimals
+            )
+        }
+
+        guard fingerprint(for: entry.configuration) != nil else {
+            return "未配置"
+        }
+
+        if entry.snapshotFreshness == .configurationMismatch {
+            return "未验证"
+        }
+
+        if let failureKind = entry.lastFailureKind, failureKind == .unauthorized {
+            return "未授权"
+        }
+
+        if entry.lastError != nil {
+            return entry.lastFailureKind?.stateTextWithoutCache ?? "刷新失败"
+        }
+
+        return "未刷新"
+    }
+
+    private func statusLineText(for entry: UsageKeyEntry) -> String {
+        if entry.isRefreshing {
+            return "正在刷新"
+        }
+
+        switch entry.snapshotFreshness {
+        case .fresh:
+            return "数据已刷新"
+        case .stale:
+            if let lastFailureKind = entry.lastFailureKind {
+                return lastFailureKind.stateTextWhenCached
+            }
+            return "缓存数据（等待刷新）"
+        case .configurationMismatch:
+            return "配置已变更，未验证"
+        case .empty:
+            if fingerprint(for: entry.configuration) == nil {
+                return "未配置"
+            }
+            if let lastFailureKind = entry.lastFailureKind {
+                return lastFailureKind.stateTextWithoutCache
+            }
+            return "未刷新"
+        }
     }
 }
 

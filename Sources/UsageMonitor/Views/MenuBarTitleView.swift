@@ -1,5 +1,12 @@
 import SwiftUI
 
+struct MenuBarKeyDisplayRow: Equatable, Identifiable {
+    let id: String
+    let name: String
+    let symbolName: String
+    let text: String
+}
+
 struct MenuBarTitleView: View {
     static let statusCellSize = CGSize(width: 4, height: 4)
     static let statusCellSpacing: CGFloat = 1.5
@@ -9,6 +16,21 @@ struct MenuBarTitleView: View {
     let color: Color
     let statusCells: [ServiceStatusDisplayCell]
     let statusCellsAreStale: Bool
+    let keyRows: [MenuBarKeyDisplayRow]
+
+    init(
+        text: String,
+        color: Color,
+        statusCells: [ServiceStatusDisplayCell],
+        statusCellsAreStale: Bool,
+        keyRows: [MenuBarKeyDisplayRow] = []
+    ) {
+        self.text = text
+        self.color = color
+        self.statusCells = statusCells
+        self.statusCellsAreStale = statusCellsAreStale
+        self.keyRows = keyRows
+    }
 
     var body: some View {
         VStack(spacing: 1) {
@@ -47,6 +69,40 @@ struct MenuBarTitleView: View {
 
     static func accessibilityTitle(text: String, statusCells: [ServiceStatusDisplayCell], count: Int) -> String {
         "\(latestStatusKind(for: statusCells, count: count).accessibilityTitle) \(text)"
+    }
+
+    static func accessibilityTitle(
+        keyRows: [MenuBarKeyDisplayRow],
+        statusCells: [ServiceStatusDisplayCell],
+        statusCellsAreStale: Bool
+    ) -> String {
+        let statusText = latestStatusKind(for: statusCells, count: 2).accessibilityTitle
+            + (statusCellsAreStale ? "（缓存）" : "")
+        let keyText = keyRows
+            .map { "\($0.name) \($0.text)" }
+            .joined(separator: "，")
+        return keyText.isEmpty ? statusText : "\(statusText) \(keyText)"
+    }
+
+    static func keyGridColumnCount(forKeyCount keyCount: Int) -> Int {
+        max(1, Int(ceil(Double(max(1, keyCount)) / 2.0)))
+    }
+
+    static func keyGridColumns(for rows: [MenuBarKeyDisplayRow]) -> [[MenuBarKeyDisplayRow]] {
+        guard !rows.isEmpty else { return [[]] }
+        return stride(from: 0, to: rows.count, by: 2).map { start in
+            Array(rows[start..<min(start + 2, rows.count)])
+        }
+    }
+
+    static func resolvedSymbolName(_ symbolName: String) -> String {
+        let trimmed = symbolName.trimmingCharacters(in: .whitespacesAndNewlines)
+        #if os(macOS)
+        if !trimmed.isEmpty, NSImage(systemSymbolName: trimmed, accessibilityDescription: nil) != nil {
+            return trimmed
+        }
+        #endif
+        return UsageKeyConfiguration.defaultSymbolName
     }
 }
 

@@ -23,7 +23,7 @@ final class MenuBarTitleViewTests: XCTestCase {
         XCTAssertTrue(view.statusCellsAreStale)
     }
 
-    func testStatusCellsNormalizeToFiveEntries() {
+    func testStatusCellsNormalizeToVerticalEntries() {
         let cells = [
             ServiceStatusDisplayCell(kind: .green, probe: nil),
             ServiceStatusDisplayCell(kind: .yellow, probe: nil),
@@ -31,31 +31,21 @@ final class MenuBarTitleViewTests: XCTestCase {
             ServiceStatusDisplayCell(kind: .gray, probe: nil),
         ]
 
-        let normalized = MenuBarTitleView.normalizedStatusCells(for: cells, count: 5)
+        let normalized = MenuBarTitleView.normalizedStatusCells(for: cells, count: 2)
 
-        XCTAssertEqual(normalized.count, 5)
-        XCTAssertEqual(normalized.suffix(4).map(\.kind), [.green, .yellow, .red, .gray])
-        XCTAssertEqual(normalized.prefix(1).map(\.kind), [.gray])
-        XCTAssertEqual(MenuBarTitleView.latestStatusKind(for: cells, count: 5), .gray)
+        XCTAssertEqual(normalized.count, 2)
+        XCTAssertEqual(normalized.map(\.kind), [.red, .gray])
+        XCTAssertEqual(MenuBarTitleView.latestStatusKind(for: cells, count: 2), .gray)
     }
 
-    func testStatusCellsNormalizeToDynamicHorizontalCounts() {
+    func testStatusCellsPadMissingVerticalEntries() {
         let cells = [
             ServiceStatusDisplayCell(kind: .green, probe: nil),
-            ServiceStatusDisplayCell(kind: .yellow, probe: nil),
-            ServiceStatusDisplayCell(kind: .red, probe: nil),
-            ServiceStatusDisplayCell(kind: .gray, probe: nil),
         ]
 
-        let withDecimals = MenuBarTitleView.normalizedStatusCells(for: cells, count: 6)
-        let withoutDecimals = MenuBarTitleView.normalizedStatusCells(for: cells, count: 4)
+        let normalized = MenuBarTitleView.normalizedStatusCells(for: cells, count: 2)
 
-        XCTAssertEqual(withDecimals.count, 6)
-        XCTAssertEqual(withDecimals.prefix(2).map(\.kind), [.gray, .gray])
-        XCTAssertEqual(withDecimals.suffix(4).map(\.kind), [.green, .yellow, .red, .gray])
-
-        XCTAssertEqual(withoutDecimals.count, 4)
-        XCTAssertEqual(withoutDecimals.map(\.kind), [.green, .yellow, .red, .gray])
+        XCTAssertEqual(normalized.map(\.kind), [.gray, .green])
     }
 
     func testAccessibilityTitlePrefixesLatestStatusDescription() {

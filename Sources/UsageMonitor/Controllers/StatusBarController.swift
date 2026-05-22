@@ -12,7 +12,11 @@ final class StatusBarController: NSObject {
     static let verticalStatusOffsetY: CGFloat = 0
     static let verticalTextOffsetY: CGFloat = -1
     static let statusTextSpacing: CGFloat = 5
-    static let maximumStatusCellCount = 6
+    static let keyColumnSpacing: CGFloat = 7
+    static let keyRowSpacing: CGFloat = 1
+    static let keySymbolTextSpacing: CGFloat = 2
+    static let keySymbolWidth: CGFloat = 11
+    static let maximumStatusCellCount = 2
     private static let titleFont = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
 
     private let usageMonitor: UsageSnapshotMonitor
@@ -59,28 +63,49 @@ final class StatusBarController: NSObject {
         )
     }
 
+    static func titleText(
+        keyRows: [MenuBarKeyDisplayRow],
+        statusCells: [ServiceStatusDisplayCell],
+        statusCellsAreStale: Bool
+    ) -> String {
+        MenuBarTitleView.accessibilityTitle(
+            keyRows: keyRows,
+            statusCells: statusCells,
+            statusCellsAreStale: statusCellsAreStale
+        )
+    }
+
     static func statusItemLength(
         for displayText: String,
         layoutMode: ServiceStatusLayoutMode,
         showMenuBarDecimals: Bool
     ) -> CGFloat {
         let textWidth = ceil(textSize(for: displayText).width) + textWidthSlack
-        switch layoutMode {
-        case .horizontalFive:
-            return ceil(
-                horizontalPadding
-                + max(textWidth, statusStripWidth(for: layoutMode, showMenuBarDecimals: showMenuBarDecimals))
-                + horizontalPadding
-            )
-        case .verticalTwo:
-            return ceil(
-                horizontalPadding
-                + statusStripWidth(for: layoutMode, showMenuBarDecimals: showMenuBarDecimals)
-                + statusTextSpacing
-                + textWidth
-                + horizontalPadding
-            )
+        return ceil(
+            horizontalPadding
+            + statusStripWidth(for: layoutMode, showMenuBarDecimals: showMenuBarDecimals)
+            + statusTextSpacing
+            + textWidth
+            + horizontalPadding
+        )
+    }
+
+    static func statusItemLength(forKeyRows keyRows: [MenuBarKeyDisplayRow]) -> CGFloat {
+        let columns = MenuBarTitleView.keyGridColumns(for: keyRows)
+        let columnWidths = columns.map { column in
+            column.map { row in
+                keySymbolWidth + keySymbolTextSpacing + ceil(textSize(for: row.text).width) + textWidthSlack
+            }.max() ?? 0
         }
+        let keysWidth = columnWidths.reduce(0, +)
+            + CGFloat(max(0, columns.count - 1)) * keyColumnSpacing
+        return ceil(
+            horizontalPadding
+            + statusStripWidth(for: .verticalTwo, showMenuBarDecimals: true)
+            + statusTextSpacing
+            + keysWidth
+            + horizontalPadding
+        )
     }
 
     static func horizontalTextOffsetX(for displayText: String, layoutMode: ServiceStatusLayoutMode) -> CGFloat {
@@ -181,32 +206,24 @@ final class StatusBarController: NSObject {
     }
 
     private func updateStatusTitle() {
-        let displayText = usageMonitor.menuBarText
-        let layoutMode = usageMonitor.serviceStatusLayoutMode
-        let showMenuBarDecimals = usageMonitor.showMenuBarDecimals
+        let keyRows = usageMonitor.menuBarKeyRows
         let statusCells = MenuBarTitleView.normalizedStatusCells(
             for: serviceStatusMonitor.displayCells,
-            count: layoutMode.statusCellCount(showMenuBarDecimals: showMenuBarDecimals)
+            count: ServiceStatusLayoutMode.verticalTwo.statusCellCount(showMenuBarDecimals: true)
         )
 
-        statusItem.length = Self.statusItemLength(
-            for: displayText,
-            layoutMode: layoutMode,
-            showMenuBarDecimals: showMenuBarDecimals
-        )
+        statusItem.length = Self.statusItemLength(forKeyRows: keyRows)
         badgeView.update(
-            displayText: displayText,
+            keyRows: keyRows,
             statusCells: statusCells,
             statusCellsAreStale: serviceStatusMonitor.isStaleAfterFailure,
-            layoutMode: layoutMode,
-            showMenuBarDecimals: showMenuBarDecimals
+            showMenuBarDecimals: usageMonitor.showMenuBarDecimals
         )
         statusItem.button?.setAccessibilityTitle(
             Self.titleText(
-                displayText: displayText,
+                keyRows: keyRows,
                 statusCells: statusCells,
-                layoutMode: layoutMode,
-                showMenuBarDecimals: showMenuBarDecimals
+                statusCellsAreStale: serviceStatusMonitor.isStaleAfterFailure
             )
         )
         statusItem.button?.needsLayout = true
@@ -224,21 +241,21 @@ final class StatusBarController: NSObject {
 
 private final class StatusBarBadgeView: NSView {
     private let indicatorViews = (0..<StatusBarController.maximumStatusCellCount).map { _ in NSView(frame: .zero) }
-    private let textView: StatusBarTextView
-    private var displayText = ""
+    private var textViews: [StatusBarTextView] = []
+    private var symbolViews: [NSImageView] = []
+    private var keyRows: [MenuBarKeyDisplayRow] = []
     private var statusCells: [ServiceStatusDisplayCell] = []
     private var statusCellsAreStale = false
-    private var layoutMode: ServiceStatusLayoutMode = .horizontalFive
     private var showMenuBarDecimals = true
+    private let font: NSFont
 
     init(font: NSFont) {
-        textView = StatusBarTextView(font: font)
+        self.font = font
         super.init(frame: .zero)
         indicatorViews.forEach { indicatorView in
             indicatorView.wantsLayer = true
             addSubview(indicatorView)
         }
-        addSubview(textView)
     }
 
     @available(*, unavailable)
@@ -257,90 +274,77 @@ private final class StatusBarBadgeView: NSView {
             dy: StatusBarController.verticalPadding
         )
         let labelSize = StatusBarController.textSize(for: displayText)
-        textView.frame = bounds
-        switch layoutMode {
-        case .horizontalFive:
-            let topSectionHeight = max(4, floor(contentRect.height * MenuBarTitleView.topSectionRatio))
-            let bottomSectionHeight = max(0, contentRect.height - topSectionHeight)
-            let gridY = contentRect.maxY - topSectionHeight
-                + floor((topSectionHeight - MenuBarTitleView.statusCellSize.height) / 2)
-                + StatusBarController.horizontalContentOffsetY
-            let gridX = contentRect.minX
-                + floor(
-                    (
-                        contentRect.width
-                        - StatusBarController.statusStripWidth(for: layoutMode, showMenuBarDecimals: showMenuBarDecimals)
-                    ) / 2
+        _ = labelSize
+        let stackHeight = StatusBarController.statusStackHeight(for: .verticalTwo, showMenuBarDecimals: showMenuBarDecimals)
+        let gridY = StatusBarController.verticalGridY(in: contentRect, stackHeight: stackHeight)
+        let gridX = contentRect.minX
+
+        for (index, indicatorView) in indicatorViews.enumerated() {
+            if index < statusCells.count {
+                let originY = gridY + CGFloat(statusCells.count - 1 - index)
+                    * (MenuBarTitleView.statusCellSize.height + MenuBarTitleView.statusCellSpacing)
+                indicatorView.frame = NSRect(
+                    x: gridX,
+                    y: originY,
+                    width: MenuBarTitleView.statusCellSize.width,
+                    height: MenuBarTitleView.statusCellSize.height
                 )
-
-            for (index, indicatorView) in indicatorViews.enumerated() {
-                if index < statusCells.count {
-                    let originX = gridX + CGFloat(index) * (MenuBarTitleView.statusCellSize.width + MenuBarTitleView.statusCellSpacing)
-                    indicatorView.frame = NSRect(
-                        x: originX,
-                        y: gridY,
-                        width: MenuBarTitleView.statusCellSize.width,
-                        height: MenuBarTitleView.statusCellSize.height
-                    )
-                } else {
-                    indicatorView.frame = .zero
-                }
-                indicatorView.layer?.cornerRadius = 1
+            } else {
+                indicatorView.frame = .zero
             }
+            indicatorView.layer?.cornerRadius = 1
+        }
 
-            textView.alignment = .center
-            textView.textRect = StatusBarController.horizontalTextFrame(
-                in: contentRect,
-                bottomSectionHeight: bottomSectionHeight,
-                labelSize: labelSize,
-                displayText: displayText,
-                layoutMode: layoutMode
-            )
-        case .verticalTwo:
-            let stackHeight = StatusBarController.statusStackHeight(for: layoutMode, showMenuBarDecimals: showMenuBarDecimals)
-            let gridY = StatusBarController.verticalGridY(in: contentRect, stackHeight: stackHeight)
-            let gridX = contentRect.minX
-
-            for (index, indicatorView) in indicatorViews.enumerated() {
-                if index < statusCells.count {
-                    let originY = gridY + CGFloat(statusCells.count - 1 - index)
-                        * (MenuBarTitleView.statusCellSize.height + MenuBarTitleView.statusCellSpacing)
-                    indicatorView.frame = NSRect(
-                        x: gridX,
-                        y: originY,
-                        width: MenuBarTitleView.statusCellSize.width,
-                        height: MenuBarTitleView.statusCellSize.height
-                    )
-                } else {
-                    indicatorView.frame = .zero
-                }
-                indicatorView.layer?.cornerRadius = 1
+        let columns = MenuBarTitleView.keyGridColumns(for: keyRows)
+        var x = gridX + StatusBarController.statusStripWidth(for: .verticalTwo, showMenuBarDecimals: showMenuBarDecimals)
+            + StatusBarController.statusTextSpacing
+        var viewIndex = 0
+        for column in columns {
+            let columnWidth = column.map {
+                StatusBarController.keySymbolWidth
+                    + StatusBarController.keySymbolTextSpacing
+                    + ceil(StatusBarController.textSize(for: $0.text).width)
+                    + StatusBarController.textWidthSlack
+            }.max() ?? 0
+            for (rowIndex, row) in column.enumerated() {
+                guard viewIndex < textViews.count, viewIndex < symbolViews.count else { continue }
+                let rowHeight = ceil(StatusBarController.textSize(for: row.text).height)
+                let totalRowsHeight = CGFloat(column.count) * rowHeight
+                    + CGFloat(max(0, column.count - 1)) * StatusBarController.keyRowSpacing
+                let topY = contentRect.minY + floor((contentRect.height - totalRowsHeight) / 2)
+                    + CGFloat(column.count - 1 - rowIndex) * (rowHeight + StatusBarController.keyRowSpacing)
+                    + StatusBarController.verticalTextOffsetY
+                symbolViews[viewIndex].frame = NSRect(
+                    x: x,
+                    y: topY + 2,
+                    width: StatusBarController.keySymbolWidth,
+                    height: StatusBarController.keySymbolWidth
+                )
+                textViews[viewIndex].frame = bounds
+                textViews[viewIndex].alignment = .left
+                textViews[viewIndex].textRect = NSRect(
+                    x: x + StatusBarController.keySymbolWidth + StatusBarController.keySymbolTextSpacing,
+                    y: topY,
+                    width: max(0, columnWidth - StatusBarController.keySymbolWidth - StatusBarController.keySymbolTextSpacing),
+                    height: rowHeight + StatusBarController.horizontalTextHeightSlack
+                )
+                viewIndex += 1
             }
-
-            textView.alignment = .left
-            textView.textRect = StatusBarController.verticalTextFrame(
-                in: contentRect,
-                labelSize: labelSize,
-                gridX: gridX,
-                layoutMode: layoutMode,
-                showMenuBarDecimals: showMenuBarDecimals
-            )
+            x += columnWidth + StatusBarController.keyColumnSpacing
         }
     }
 
     func update(
-        displayText: String,
+        keyRows: [MenuBarKeyDisplayRow],
         statusCells: [ServiceStatusDisplayCell],
         statusCellsAreStale: Bool,
-        layoutMode: ServiceStatusLayoutMode,
         showMenuBarDecimals: Bool
     ) {
-        self.displayText = displayText
+        self.keyRows = keyRows
         self.statusCells = statusCells
         self.statusCellsAreStale = statusCellsAreStale
-        self.layoutMode = layoutMode
         self.showMenuBarDecimals = showMenuBarDecimals
-        textView.text = displayText
+        reconcileKeyViews()
         for (index, indicatorView) in indicatorViews.enumerated() {
             if index < self.statusCells.count {
                 let cell = self.statusCells[index]
@@ -356,12 +360,8 @@ private final class StatusBarBadgeView: NSView {
 
     override var intrinsicContentSize: NSSize {
         NSSize(
-            width: StatusBarController.statusItemLength(
-                for: displayText,
-                layoutMode: layoutMode,
-                showMenuBarDecimals: showMenuBarDecimals
-            ),
-            height: intrinsicHeight(for: layoutMode)
+            width: StatusBarController.statusItemLength(forKeyRows: keyRows),
+            height: intrinsicHeight()
         )
     }
 
@@ -370,23 +370,41 @@ private final class StatusBarBadgeView: NSView {
         return statusCellsAreStale ? baseOpacity * 0.55 : baseOpacity
     }
 
-    private func intrinsicHeight(for layoutMode: ServiceStatusLayoutMode) -> CGFloat {
-        switch layoutMode {
-        case .horizontalFive:
-            return StatusBarController.textSize(for: displayText).height
-                + MenuBarTitleView.statusCellSize.height
-                + (StatusBarController.verticalPadding * 2)
-                + StatusBarController.horizontalTextHeightSlack
-                + 1
-        case .verticalTwo:
-            return max(
-                StatusBarController.textSize(for: displayText).height,
-                StatusBarController.statusStackHeight(
-                    for: layoutMode,
-                    showMenuBarDecimals: showMenuBarDecimals
-                )
+    private func intrinsicHeight() -> CGFloat {
+        let rowHeight = keyRows.map { StatusBarController.textSize(for: $0.text).height }.max() ?? 0
+        return max(
+            (rowHeight * 2) + StatusBarController.keyRowSpacing,
+            StatusBarController.statusStackHeight(
+                for: .verticalTwo,
+                showMenuBarDecimals: showMenuBarDecimals
             )
-                + (StatusBarController.verticalPadding * 2)
+        )
+            + (StatusBarController.verticalPadding * 2)
+    }
+
+    private var displayText: String {
+        keyRows.map(\.text).joined(separator: " ")
+    }
+
+    private func reconcileKeyViews() {
+        while textViews.count < keyRows.count {
+            let textView = StatusBarTextView(font: font)
+            textViews.append(textView)
+            addSubview(textView)
+            let imageView = NSImageView(frame: .zero)
+            imageView.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 10, weight: .medium)
+            imageView.contentTintColor = .white
+            symbolViews.append(imageView)
+            addSubview(imageView)
+        }
+        while textViews.count > keyRows.count {
+            textViews.removeLast().removeFromSuperview()
+            symbolViews.removeLast().removeFromSuperview()
+        }
+        for (index, row) in keyRows.enumerated() {
+            textViews[index].text = row.text
+            let symbolName = MenuBarTitleView.resolvedSymbolName(row.symbolName)
+            symbolViews[index].image = NSImage(systemSymbolName: symbolName, accessibilityDescription: row.name)
         }
     }
 }
@@ -463,37 +481,19 @@ private extension ServiceStatusCellKind {
 
 private extension StatusBarController {
     static func statusStripWidth(for layoutMode: ServiceStatusLayoutMode, showMenuBarDecimals: Bool) -> CGFloat {
-        switch layoutMode {
-        case .horizontalFive:
-            let count = layoutMode.statusCellCount(showMenuBarDecimals: showMenuBarDecimals)
-            let cellWidth = CGFloat(count) * MenuBarTitleView.statusCellSize.width
-            let spacingWidth = CGFloat(count - 1) * MenuBarTitleView.statusCellSpacing
-            return ceil(cellWidth + spacingWidth)
-        case .verticalTwo:
-            return ceil(MenuBarTitleView.statusCellSize.width)
-        }
+        return ceil(MenuBarTitleView.statusCellSize.width)
     }
 
     static func statusStackHeight(for layoutMode: ServiceStatusLayoutMode, showMenuBarDecimals: Bool) -> CGFloat {
-        switch layoutMode {
-        case .horizontalFive:
-            return ceil(MenuBarTitleView.statusCellSize.height)
-        case .verticalTwo:
-            let count = layoutMode.statusCellCount(showMenuBarDecimals: showMenuBarDecimals)
-            let cellHeight = CGFloat(count) * MenuBarTitleView.statusCellSize.height
-            let spacingHeight = CGFloat(count - 1) * MenuBarTitleView.statusCellSpacing
-            return ceil(cellHeight + spacingHeight)
-        }
+        let count = layoutMode.statusCellCount(showMenuBarDecimals: showMenuBarDecimals)
+        let cellHeight = CGFloat(count) * MenuBarTitleView.statusCellSize.height
+        let spacingHeight = CGFloat(count - 1) * MenuBarTitleView.statusCellSpacing
+        return ceil(cellHeight + spacingHeight)
     }
 }
 
 extension ServiceStatusLayoutMode {
     func statusCellCount(showMenuBarDecimals: Bool) -> Int {
-        switch self {
-        case .horizontalFive:
-            return showMenuBarDecimals ? 6 : 4
-        case .verticalTwo:
-            return 2
-        }
+        2
     }
 }

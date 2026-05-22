@@ -1,5 +1,17 @@
 import SwiftUI
 
+enum UsageKeyPager {
+    static func clampedSelection(currentIndex: Int, keyCount: Int) -> Int {
+        guard keyCount > 0 else { return 0 }
+        return min(max(0, currentIndex), keyCount - 1)
+    }
+
+    static func selectedEntry(in entries: [UsageKeyEntry], selectedIndex: Int) -> UsageKeyEntry? {
+        guard !entries.isEmpty else { return nil }
+        return entries[clampedSelection(currentIndex: selectedIndex, keyCount: entries.count)]
+    }
+}
+
 struct MenuBarView: View {
     private static let serviceTimelineCellWidth: CGFloat = 4.8
     private static let serviceTimelineCellHeight: CGFloat = 16
@@ -8,26 +20,34 @@ struct MenuBarView: View {
     @ObservedObject var monitor: UsageSnapshotMonitor
     @ObservedObject var serviceStatusMonitor: ServiceStatusMonitor
     @ObservedObject var settingsWindowController: SettingsWindowController
+    @State private var selectedKeyIndex = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
             serviceStatusSection
+            keyPager
 
-            if let snapshot = monitor.snapshot, monitor.canShowSnapshotData {
-                usageSnapshot(snapshot)
+            if let entry = currentEntry {
+                currentKeyDetail(entry)
             } else {
-                Text(emptyStateText)
+                Text("未配置")
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            if !monitor.alertMessages.isEmpty {
-                alertSection
+            if let entry = currentEntry, !(entry.thresholdAlertState?.messages ?? []).isEmpty {
+                alertSection(entry)
             }
         }
         .padding(16)
         .frame(width: 440)
+        .onChange(of: monitor.usageKeys.count) { newValue in
+            selectedKeyIndex = UsageKeyPager.clampedSelection(
+                currentIndex: selectedKeyIndex,
+                keyCount: newValue
+            )
+        }
     }
 
     private var header: some View {
@@ -35,31 +55,31 @@ struct MenuBarView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("用量监控")
                     .font(.headline)
-                Text("余额 \(monitor.balanceText)")
+                Text("\(monitor.usageKeys.count) 个 Key")
                     .font(.caption)
                     .foregroundColor(.secondary)
                 Text(refreshText)
                     .font(.caption)
                     .foregroundColor(.secondary)
-                Text(monitor.statusLineText)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                if let detail = monitor.statusDetailText {
-                    Text(detail)
-                        .font(.caption)
-                        .foregroundColor(.orange)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
             }
 
             Spacer()
 
             Button {
-                Task { await monitor.refreshNow() }
+                if let id = currentEntry?.id {
+                    Task { await monitor.refreshCurrentKey(id: id) }
+                }
             } label: {
                 Image(systemName: "arrow.clockwise")
             }
-            .help("手动刷新")
+            .help("刷新当前 Key")
+
+            Button {
+                Task { await monitor.refreshAll() }
+            } label: {
+                Image(systemName: "arrow.clockwise.circle")
+            }
+            .help("全部刷新")
 
             Button {
                 settingsWindowController.showWindow(monitor: monitor)
@@ -81,30 +101,73 @@ struct MenuBarView: View {
         if monitor.isRefreshing {
             return "正在刷新"
         }
-        if let date = monitor.lastSuccessfulRefresh {
+        if let date = monitor.usageKeys.compactMap(\.lastSuccessfulRefresh).max() {
             return "上次成功刷新 \(date.formatted(date: .omitted, time: .shortened))"
         }
         return "尚未成功刷新"
     }
 
-    private var emptyStateText: String {
-        monitor.statusLineText
+    private var currentEntry: UsageKeyEntry? {
+        UsageKeyPager.selectedEntry(in: monitor.usageKeys, selectedIndex: selectedKeyIndex)
     }
 
-    private var alertSection: some View {
+    private var keyPager: some View {
+        HStack(spacing: 10) {
+            Button {
+                selectedKeyIndex = UsageKeyPager.clampedSelection(
+                    currentIndex: selectedKeyIndex - 1,
+                    keyCount: monitor.usageKeys.count
+                )
+            } label: {
+                Image(systemName: "chevron.left")
+            }
+            .disabled(selectedKeyIndex <= 0)
+            .help("上一个 Key")
+
+            Spacer()
+
+            if let entry = currentEntry {
+                VStack(spacing: 2) {
+                    HStack(spacing: 6) {
+                        Image(systemName: MenuBarTitleView.resolvedSymbolName(entry.configuration.symbolName))
+                        Text(entry.configuration.name)
+                            .font(.subheadline.bold())
+                    }
+                    Text("第 \(UsageKeyPager.clampedSelection(currentIndex: selectedKeyIndex, keyCount: monitor.usageKeys.count) + 1) / \(max(1, monitor.usageKeys.count)) 个")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            Spacer()
+
+            Button {
+                selectedKeyIndex = UsageKeyPager.clampedSelection(
+                    currentIndex: selectedKeyIndex + 1,
+                    keyCount: monitor.usageKeys.count
+                )
+            } label: {
+                Image(systemName: "chevron.right")
+            }
+            .disabled(selectedKeyIndex >= monitor.usageKeys.count - 1)
+            .help("下一个 Key")
+        }
+    }
+
+    private func alertSection(_ entry: UsageKeyEntry) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("提醒")
                 .font(.caption.bold())
-            ForEach(Array(monitor.alertMessages.enumerated()), id: \.offset) { _, message in
+            ForEach(Array((entry.thresholdAlertState?.messages ?? []).enumerated()), id: \.offset) { _, message in
                 Text(message)
                     .font(.caption)
-                    .foregroundColor(alertColor)
+                    .foregroundColor(alertColor(for: entry))
             }
         }
     }
 
-    private var alertColor: Color {
-        if let alert = monitor.thresholdAlertState,
+    private func alertColor(for entry: UsageKeyEntry) -> Color {
+        if let alert = entry.thresholdAlertState,
            alert.kinds.contains(.dailyUsage95) || alert.kinds.contains(.subscriptionExpired) {
             return .red
         }
@@ -273,6 +336,52 @@ struct MenuBarView: View {
         return "\(latencyMS) ms"
     }
 
+    private func currentKeyDetail(_ entry: UsageKeyEntry) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            keySummary(entry)
+            if let snapshot = entry.snapshot, entry.canShowSnapshotData {
+                usageSnapshot(snapshot)
+            } else {
+                Text(statusLineText(for: entry))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    private func keySummary(_ entry: UsageKeyEntry) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack {
+                Image(systemName: MenuBarTitleView.resolvedSymbolName(entry.configuration.symbolName))
+                Text(entry.configuration.name)
+                    .font(.caption.bold())
+                Spacer()
+                Text("余额 \(balanceText(for: entry))")
+                    .font(.caption.monospacedDigit())
+                    .foregroundColor(.secondary)
+            }
+            Text(baseURLSourceText(for: entry.configuration))
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+            Text(statusLineText(for: entry))
+                .font(.caption)
+                .foregroundColor(.secondary)
+            if let date = entry.lastSuccessfulRefresh {
+                Text("上次成功刷新 \(date.formatted(date: .omitted, time: .standard))")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            if let detail = entry.lastError {
+                Text(detail)
+                    .font(.caption)
+                    .foregroundColor(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
     private func usageSnapshot(_ snapshot: UsageResponse) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             planSection(snapshot)
@@ -395,6 +504,46 @@ struct MenuBarView: View {
             }
         }
         .font(.caption)
+    }
+
+    private func balanceText(for entry: UsageKeyEntry) -> String {
+        guard entry.canShowSnapshotData, let snapshot = entry.snapshot else { return "--" }
+        return UsageFormatters.balanceText(snapshot.remaining)
+    }
+
+    private func baseURLSourceText(for configuration: UsageKeyConfiguration) -> String {
+        switch configuration.baseURLMode {
+        case .inherited:
+            return "Base URL：继承 \(monitor.defaultBaseURLText)"
+        case .independent:
+            return "Base URL：独立 \(configuration.baseURLOverride)"
+        }
+    }
+
+    private func statusLineText(for entry: UsageKeyEntry) -> String {
+        if entry.isRefreshing {
+            return "正在刷新"
+        }
+
+        switch entry.snapshotFreshness {
+        case .fresh:
+            return "数据已刷新"
+        case .stale:
+            if let lastFailureKind = entry.lastFailureKind {
+                return lastFailureKind.stateTextWhenCached
+            }
+            return "缓存数据（等待刷新）"
+        case .configurationMismatch:
+            return "配置已变更，未验证"
+        case .empty:
+            if entry.configuration.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return "未配置"
+            }
+            if let lastFailureKind = entry.lastFailureKind {
+                return lastFailureKind.stateTextWithoutCache
+            }
+            return "未刷新"
+        }
     }
 }
 

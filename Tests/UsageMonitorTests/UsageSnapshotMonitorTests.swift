@@ -522,7 +522,7 @@ final class UsageSnapshotMonitorTests: XCTestCase {
 
 }
 
-private func makeUsageJSON(
+func makeUsageJSON(
     dailyUsage: Double = 84.04,
     dailyLimit: Double = 500,
     remaining: Double = 415.96,

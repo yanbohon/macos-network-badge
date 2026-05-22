@@ -11,6 +11,7 @@ struct SettingsView: View {
     @State private var updateCheckResult: UpdateCheckResult?
     @State private var isCheckingForUpdate = false
     @State private var updateCheckGeneration = 0
+    @State private var selectedKeyID: String?
 
     init(
         monitor: UsageSnapshotMonitor,
@@ -20,7 +21,8 @@ struct SettingsView: View {
         self.monitor = monitor
         self.updateDefaults = updateDefaults
         self.updateChecker = updateChecker
-        _draft = State(initialValue: SettingsDraft(baseURL: monitor.baseURLText, apiKey: monitor.apiKey))
+        _draft = State(initialValue: Self.makeDraft(from: monitor))
+        _selectedKeyID = State(initialValue: monitor.usageKeys.first?.id)
         let savedIncludeBetaUpdates = updateDefaults.object(forKey: UpdateDefaultsKey.includeBetaUpdates) as? Bool ?? false
         _includeBetaUpdates = State(initialValue: savedIncludeBetaUpdates)
     }
@@ -44,10 +46,10 @@ struct SettingsView: View {
         .onDisappear {
             commitDraft()
         }
-        .onChange(of: draft.baseURL) { _ in
+        .onChange(of: draft.defaultBaseURL) { _ in
             clearConnectionStatus()
         }
-        .onChange(of: draft.apiKey) { _ in
+        .onChange(of: draft.keys) { _ in
             clearConnectionStatus()
         }
         .onChange(of: includeBetaUpdates) { newValue in
@@ -75,18 +77,16 @@ struct SettingsView: View {
             labeledInput(
                 title: "Base URL",
                 placeholder: "https://example.com",
-                text: $draft.baseURL,
+                text: $draft.defaultBaseURL,
                 secure: false,
                 autoFocus: true
             )
 
-            labeledInput(
-                title: "API Key",
-                placeholder: "输入 API Key",
-                text: $draft.apiKey,
-                secure: true,
-                helper: "API Key 仅保存在本机应用偏好设置中。"
-            )
+            keyList
+
+            if selectedKeyIndex != nil {
+                selectedKeyEditor
+            }
 
             VStack(alignment: .leading, spacing: 8) {
                 Button {
@@ -125,7 +125,7 @@ struct SettingsView: View {
 
             Button {
                 commitDraft()
-                Task { await monitor.refreshNow() }
+                Task { await monitor.refreshAll() }
             } label: {
                 Text(manualRefreshButtonTitle)
             }
@@ -139,17 +139,119 @@ struct SettingsView: View {
             sectionTitle("显示")
 
             Toggle("菜单栏显示小数点", isOn: $monitor.showMenuBarDecimals)
+        }
+    }
 
-            HStack(alignment: .firstTextBaseline) {
-                Text("在线状态")
-                Spacer(minLength: 12)
-                Picker("在线状态", selection: $monitor.serviceStatusLayoutMode) {
-                    ForEach(ServiceStatusLayoutMode.allCases, id: \.self) { mode in
-                        Text(mode.displayName).tag(mode)
+    private var keyList: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Key")
+                    .font(.callout.weight(.semibold))
+                Spacer()
+                Button {
+                    commitDraft()
+                    let id = monitor.addKey()
+                    syncDraftFromMonitor(selectedID: id)
+                } label: {
+                    Label("新增 Key", systemImage: "plus")
+                }
+                .buttonStyle(.bordered)
+            }
+
+            ForEach(draft.keys) { key in
+                Button {
+                    selectedKeyID = key.id
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: MenuBarTitleView.resolvedSymbolName(key.symbolName))
+                            .frame(width: 16)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(key.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "未命名 Key" : key.name)
+                            Text(key.baseURLMode == .inherited ? "继承全局 Base URL" : "独立 Base URL")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Text(stateSummary(for: key.id))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
-                .labelsHidden()
-                .pickerStyle(.menu)
+                .buttonStyle(.plain)
+                .padding(.vertical, 5)
+                .padding(.horizontal, 7)
+                .background(selectedKeyID == key.id ? Color.accentColor.opacity(0.14) : Color.clear)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+        }
+    }
+
+    private var selectedKeyEditor: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            labeledInput(
+                title: "名称",
+                placeholder: "Key 名称",
+                text: selectedKeyBinding(\.name),
+                secure: false
+            )
+            labeledInput(
+                title: "SF Symbol",
+                placeholder: "key.fill",
+                text: selectedKeyBinding(\.symbolName),
+                secure: false,
+                helper: "无效名称会显示默认 key.fill。"
+            )
+            labeledInput(
+                title: "API Key",
+                placeholder: "输入 API Key",
+                text: selectedKeyBinding(\.apiKey),
+                secure: true,
+                helper: "API Key 仅保存在本机应用偏好设置中。"
+            )
+
+            Picker("Base URL 模式", selection: selectedKeyBaseURLModeBinding) {
+                ForEach(UsageKeyBaseURLMode.allCases, id: \.self) { mode in
+                    Text(mode.displayName).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            if selectedKey?.baseURLMode == .independent {
+                labeledInput(
+                    title: "独立 Base URL",
+                    placeholder: "https://example.com",
+                    text: selectedKeyBinding(\.baseURLOverride),
+                    secure: false
+                )
+            }
+
+            HStack {
+                Button {
+                    Task { await validateSelectedKey() }
+                } label: {
+                    Text(primaryButtonTitle)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isBusy)
+
+                Button {
+                    commitDraft()
+                    Task { await monitor.refreshAll() }
+                } label: {
+                    Text("刷新全部")
+                }
+                .buttonStyle(.bordered)
+                .disabled(monitor.isRefreshing)
+
+                Spacer()
+
+                Button(role: .destructive) {
+                    deleteSelectedKey()
+                } label: {
+                    Text("删除 Key")
+                }
+                .buttonStyle(.bordered)
+                .disabled(draft.keys.count <= 1)
             }
         }
     }
@@ -196,7 +298,7 @@ struct SettingsView: View {
     }
 
     private var manualRefreshButtonTitle: String {
-        monitor.isRefreshing ? "刷新中…" : "手动刷新"
+        monitor.isRefreshing ? "刷新中…" : "刷新全部"
     }
 
     private var isBusy: Bool {
@@ -276,14 +378,24 @@ struct SettingsView: View {
     }
 
     private func validateAndRefresh() async {
+        await validateSelectedKey()
+    }
+
+    private func validateSelectedKey() async {
         commitDraft()
         connectionStatus = .validating
 
         do {
-            try await monitor.validateAndRefresh()
+            let id = selectedKeyID ?? monitor.usageKeys.first?.id
+            if let id {
+                try await monitor.validateAndRefreshKey(id: id)
+            } else {
+                try await monitor.validateAndRefresh()
+            }
             connectionStatus = .success("验证成功")
         } catch {
-            connectionStatus = .failure(monitor.lastError ?? "验证失败")
+            let id = selectedKeyID ?? monitor.usageKeys.first?.id
+            connectionStatus = .failure(id.flatMap { monitor.keyState(id: $0)?.lastError } ?? "验证失败")
         }
     }
 
@@ -292,8 +404,79 @@ struct SettingsView: View {
     }
 
     private func syncDraftFromMonitor() {
-        draft = SettingsDraft(baseURL: monitor.baseURLText, apiKey: monitor.apiKey)
+        syncDraftFromMonitor(selectedID: selectedKeyID)
+    }
+
+    private func syncDraftFromMonitor(selectedID: String?) {
+        draft = Self.makeDraft(from: monitor)
+        selectedKeyID = selectedID ?? monitor.usageKeys.first?.id
+        if !draft.keys.contains(where: { $0.id == selectedKeyID }) {
+            selectedKeyID = draft.keys.first?.id
+        }
         connectionStatus = .idle
+    }
+
+    private static func makeDraft(from monitor: UsageSnapshotMonitor) -> SettingsDraft {
+        SettingsDraft(
+            defaultBaseURL: monitor.defaultBaseURLText,
+            keys: monitor.usageKeys.map { SettingsDraft.KeyDraft(configuration: $0.configuration) }
+        )
+    }
+
+    private var selectedKeyIndex: Int? {
+        guard let selectedKeyID else { return draft.keys.indices.first }
+        return draft.keys.firstIndex { $0.id == selectedKeyID }
+    }
+
+    private var selectedKey: SettingsDraft.KeyDraft? {
+        guard let selectedKeyIndex else { return nil }
+        return draft.keys[selectedKeyIndex]
+    }
+
+    private func selectedKeyBinding(_ keyPath: WritableKeyPath<SettingsDraft.KeyDraft, String>) -> Binding<String> {
+        Binding(
+            get: {
+                guard let selectedKeyIndex else { return "" }
+                return draft.keys[selectedKeyIndex][keyPath: keyPath]
+            },
+            set: { value in
+                guard let selectedKeyIndex else { return }
+                draft.keys[selectedKeyIndex][keyPath: keyPath] = value
+            }
+        )
+    }
+
+    private var selectedKeyBaseURLModeBinding: Binding<UsageKeyBaseURLMode> {
+        Binding(
+            get: {
+                guard let selectedKeyIndex else { return .inherited }
+                return draft.keys[selectedKeyIndex].baseURLMode
+            },
+            set: { value in
+                guard let selectedKeyIndex else { return }
+                draft.keys[selectedKeyIndex].baseURLMode = value
+            }
+        )
+    }
+
+    private func deleteSelectedKey() {
+        guard let selectedKeyID, draft.keys.count > 1 else { return }
+        monitor.deleteKey(id: selectedKeyID)
+        syncDraftFromMonitor(selectedID: monitor.usageKeys.first?.id)
+    }
+
+    private func stateSummary(for keyID: String) -> String {
+        guard let entry = monitor.keyState(id: keyID) else { return "未配置" }
+        switch entry.snapshotFreshness {
+        case .fresh:
+            return "已刷新"
+        case .stale:
+            return "缓存"
+        case .configurationMismatch:
+            return "未验证"
+        case .empty:
+            return entry.lastFailureKind?.stateTextWithoutCache ?? "未刷新"
+        }
     }
 
     private func startUpdateCheck() {

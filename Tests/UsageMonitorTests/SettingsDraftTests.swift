@@ -33,6 +33,7 @@ final class SettingsDraftTests: XCTestCase {
 private final class RecordingSettingsPersister: SettingsValuesPersisting {
     var baseURLs: [String] = []
     var apiKeys: [String] = []
+    var keyConfigurations: [UsageKeyConfiguration] = []
 
     func updateBaseURL(_ value: String) {
         baseURLs.append(value)
@@ -40,5 +41,25 @@ private final class RecordingSettingsPersister: SettingsValuesPersisting {
 
     func updateAPIKey(_ value: String) {
         apiKeys.append(value)
+    }
+
+    func updateKeyConfiguration(
+        id: String,
+        name: String,
+        symbolName: String,
+        apiKey: String,
+        baseURLMode: UsageKeyBaseURLMode,
+        baseURLOverride: String
+    ) {
+        keyConfigurations.append(
+            UsageKeyConfiguration(
+                id: id,
+                name: name,
+                symbolName: symbolName,
+                apiKey: apiKey,
+                baseURLMode: baseURLMode,
+                baseURLOverride: baseURLOverride
+            )
+        )
     }
 }
