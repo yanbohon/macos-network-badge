@@ -37,12 +37,219 @@ final class StatusBarControllerTests: XCTestCase {
     func testStatusBarUsesExplicitVerticalOnlyMetrics() {
         XCTAssertEqual(StatusBarController.horizontalPadding, 1)
         XCTAssertEqual(StatusBarController.verticalPadding, 1)
+        XCTAssertEqual(StatusBarController.keyTextFontSize, 8)
         XCTAssertEqual(StatusBarController.textWidthSlack, 3)
+        XCTAssertEqual(StatusBarController.keyTextWidthSlack, 2)
         XCTAssertEqual(StatusBarController.horizontalTextHeightSlack, 2)
-        XCTAssertEqual(StatusBarController.maximumStatusCellCount, 2)
+        XCTAssertEqual(StatusBarController.keyTextHeightSlack, 1)
+        XCTAssertEqual(StatusBarController.keyColumnSpacing, 2)
+        XCTAssertEqual(StatusBarController.keyRowSpacing, 0)
+        XCTAssertEqual(StatusBarController.keySymbolWidth, 9)
+        XCTAssertEqual(StatusBarController.keySymbolOpticalLiftY, 1)
+        XCTAssertEqual(StatusBarController.keySymbolTextSpacing, 1)
+        XCTAssertEqual(StatusBarController.maximumStatusCellCount, 3)
         XCTAssertEqual(ServiceStatusLayoutMode.allCases, [.verticalTwo])
-        XCTAssertEqual(ServiceStatusLayoutMode.verticalTwo.statusCellCount(showMenuBarDecimals: true), 2)
-        XCTAssertEqual(ServiceStatusLayoutMode.verticalTwo.statusCellCount(showMenuBarDecimals: false), 2)
+        XCTAssertEqual(
+            ServiceStatusLayoutMode.verticalTwo.statusCellCount(keyCount: 1, showMenuBarDecimals: true),
+            3
+        )
+        XCTAssertEqual(
+            ServiceStatusLayoutMode.verticalTwo.statusCellCount(keyCount: 2, showMenuBarDecimals: true),
+            3
+        )
+        XCTAssertEqual(
+            ServiceStatusLayoutMode.verticalTwo.statusCellCount(keyCount: 4, showMenuBarDecimals: false),
+            3
+        )
+        XCTAssertEqual(StatusBarController.statusCellCount(forKeyCount: 0), 3)
+        XCTAssertEqual(StatusBarController.statusCellCount(forKeyCount: 1), 3)
+        XCTAssertEqual(StatusBarController.statusCellCount(forKeyCount: 2), 3)
+        XCTAssertEqual(StatusBarController.statusCellCount(forKeyCount: 4), 3)
+    }
+
+    func testMenuBarKeySymbolUsesCenteredOpticalOffset() {
+        XCTAssertEqual(StatusBarController.keySymbolOffsetY(for: 10), 1.5)
+        XCTAssertEqual(StatusBarController.keySymbolOffsetY(for: 15), 4)
+    }
+
+    func testFourKeyStatusBarLengthStaysCompact() {
+        let rows = [
+            MenuBarKeyDisplayRow(id: "a", name: "A", symbolName: "key.fill", text: "$105.43"),
+            MenuBarKeyDisplayRow(id: "b", name: "B", symbolName: "key.fill", text: "$105.43"),
+            MenuBarKeyDisplayRow(id: "c", name: "C", symbolName: "key.fill", text: "$105.43"),
+            MenuBarKeyDisplayRow(id: "d", name: "D", symbolName: "key.fill", text: "$105.43"),
+        ]
+
+        XCTAssertLessThan(StatusBarController.statusItemLength(forKeyRows: rows), 120)
+    }
+
+    func testSingleKeyStatusBarUsesOriginalTextScale() {
+        let row = MenuBarKeyDisplayRow(id: "a", name: "A", symbolName: "key.fill", text: "$105.43")
+        let compactRows = [row, row]
+
+        XCTAssertEqual(StatusBarController.keyTextSize(for: row.text, keyCount: 1).height, 15)
+        XCTAssertEqual(StatusBarController.keySymbolWidth(forKeyCount: 1), 11)
+        XCTAssertEqual(StatusBarController.keyTextSize(for: row.text, keyCount: compactRows.count).height, 10)
+        XCTAssertEqual(StatusBarController.keySymbolWidth(forKeyCount: compactRows.count), 9)
+    }
+
+    func testKeySymbolsCanBeHiddenGloballyAcrossSingleAndMultiKeyLayouts() {
+        let row = MenuBarKeyDisplayRow(id: "a", name: "A", symbolName: "key.fill", text: "$105.43")
+        let compactRows = [row, row]
+
+        XCTAssertFalse(StatusBarController.shouldHideKeySymbol(hideMenuBarSymbols: false))
+        XCTAssertTrue(StatusBarController.shouldHideKeySymbol(hideMenuBarSymbols: true))
+        XCTAssertEqual(StatusBarController.keySymbolWidth(forKeyCount: 1, hideMenuBarSymbols: true), 0)
+        XCTAssertEqual(StatusBarController.keySymbolTextSpacing(hideMenuBarSymbols: true), 0)
+        XCTAssertEqual(StatusBarController.keySymbolWidth(forKeyCount: compactRows.count, hideMenuBarSymbols: true), 0)
+        XCTAssertEqual(StatusBarController.keySymbolTextSpacing(hideMenuBarSymbols: true), 0)
+        XCTAssertLessThan(
+            StatusBarController.statusItemLength(forKeyRows: [row], hideMenuBarSymbols: true),
+            StatusBarController.statusItemLength(forKeyRows: [row], hideMenuBarSymbols: false)
+        )
+        XCTAssertLessThan(
+            StatusBarController.statusItemLength(forKeyRows: compactRows, hideMenuBarSymbols: true),
+            StatusBarController.statusItemLength(forKeyRows: compactRows, hideMenuBarSymbols: false)
+        )
+    }
+
+    func testSingleKeyHeightUsesOneRowWhenSymbolsAreHidden() {
+        let row = MenuBarKeyDisplayRow(id: "a", name: "A", symbolName: "key.fill", text: "$105.43")
+        let expectedHeight = max(
+            ceil(StatusBarController.keyTextSize(for: row.text, keyCount: 1).height),
+            StatusBarController.statusStackHeight(
+                for: .verticalTwo,
+                keyCount: 1,
+                showMenuBarDecimals: true
+            )
+        ) + (StatusBarController.verticalPadding * 2)
+
+        XCTAssertEqual(
+            StatusBarController.statusItemHeight(
+                forKeyRows: [row],
+                showMenuBarDecimals: true,
+                hideMenuBarSymbols: true
+            ),
+            expectedHeight
+        )
+    }
+
+    func testTwoKeyHeightStillUsesTwoRows() {
+        let rows = [
+            MenuBarKeyDisplayRow(id: "a", name: "A", symbolName: "key.fill", text: "$105.43"),
+            MenuBarKeyDisplayRow(id: "b", name: "B", symbolName: "key.fill", text: "$105.43"),
+        ]
+        let rowHeight = ceil(StatusBarController.keyTextSize(for: rows[0].text, keyCount: rows.count).height)
+        let expectedHeight = max(
+            (rowHeight * 2) + StatusBarController.keyRowSpacing,
+            StatusBarController.statusStackHeight(
+                for: .verticalTwo,
+                keyCount: rows.count,
+                showMenuBarDecimals: true
+            )
+        ) + (StatusBarController.verticalPadding * 2)
+
+        XCTAssertEqual(
+            StatusBarController.statusItemHeight(
+                forKeyRows: rows,
+                showMenuBarDecimals: true,
+                hideMenuBarSymbols: true
+            ),
+            expectedHeight
+        )
+    }
+
+    func testSingleKeyStatusCellsCenterWithinOneRowHeight() {
+        let contentRect = NSRect(x: 1, y: 1, width: 80, height: 15)
+        let stackHeight = StatusBarController.statusStackHeight(
+            for: .verticalTwo,
+            keyCount: 1,
+            showMenuBarDecimals: true
+        )
+
+        XCTAssertEqual(
+            StatusBarController.verticalGridY(in: contentRect, stackHeight: stackHeight),
+            1
+        )
+    }
+
+    func testStatusCellsUseSingleThreeCellColumn() {
+        let threeCellHeight = (MenuBarTitleView.statusCellSize.height * 3)
+            + (MenuBarTitleView.statusCellSpacing * 2)
+        let oneCellWidth = MenuBarTitleView.statusCellSize.width
+
+        XCTAssertEqual(
+            StatusBarController.statusStackHeight(
+                for: .verticalTwo,
+                keyCount: 2,
+                showMenuBarDecimals: true
+            ),
+            threeCellHeight
+        )
+        XCTAssertEqual(
+            StatusBarController.statusStripWidth(
+                for: .verticalTwo,
+                keyCount: 2,
+                showMenuBarDecimals: true
+            ),
+            oneCellWidth
+        )
+        XCTAssertEqual(
+            StatusBarController.statusCellFrame(at: 0, gridX: 1, gridY: 2, keyCount: 2).origin,
+            NSPoint(x: 1, y: 13)
+        )
+        XCTAssertEqual(
+            StatusBarController.statusCellFrame(at: 1, gridX: 1, gridY: 2, keyCount: 2).origin,
+            NSPoint(x: 1, y: 7.5)
+        )
+        XCTAssertEqual(
+            StatusBarController.statusCellFrame(at: 2, gridX: 1, gridY: 2, keyCount: 2).origin,
+            NSPoint(x: 1, y: 2)
+        )
+    }
+
+    func testStatusBarBadgeImageRendersVisiblePixels() throws {
+        let rows = [
+            MenuBarKeyDisplayRow(id: "a", name: "A", symbolName: "key.fill", text: "$0.03"),
+            MenuBarKeyDisplayRow(id: "b", name: "B", symbolName: "key.fill", text: "未配置"),
+        ]
+        let cells = [
+            ServiceStatusDisplayCell(kind: .green, probe: nil),
+            ServiceStatusDisplayCell(kind: .yellow, probe: nil),
+            ServiceStatusDisplayCell(kind: .red, probe: nil),
+        ]
+
+        let image = StatusBarController.statusItemImage(
+            keyRows: rows,
+            statusCells: cells,
+            statusCellsAreStale: false,
+            showMenuBarDecimals: true,
+            hideMenuBarSymbols: true,
+            height: 24
+        )
+
+        let cgImage = try XCTUnwrap(image.cgImage(forProposedRect: nil, context: nil, hints: nil))
+        let dataProvider = try XCTUnwrap(cgImage.dataProvider)
+        let data = try XCTUnwrap(dataProvider.data)
+        let bytes = CFDataGetBytePtr(data)
+        let nonTransparentPixels = stride(from: 3, to: CFDataGetLength(data), by: 4)
+            .filter { bytes?[$0] ?? 0 > 0 }
+            .count
+
+        XCTAssertGreaterThan(nonTransparentPixels, 0)
+    }
+
+    func testStatusBarButtonUsesBadgeSubviewAsVisibleRenderer() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Sources/UsageMonitor/Controllers/StatusBarController.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("button.addSubview(badgeView)"))
+        XCTAssertTrue(source.contains("badgeView.update("))
+        XCTAssertFalse(source.contains("statusItem.button?.image = image"))
     }
 
     func testVerticalLayoutReservesRoomForStatusStripSpacingAndShortCurrencyText() {

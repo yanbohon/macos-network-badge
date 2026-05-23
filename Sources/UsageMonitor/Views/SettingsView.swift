@@ -139,6 +139,7 @@ struct SettingsView: View {
             sectionTitle("显示")
 
             Toggle("菜单栏显示小数点", isOn: $monitor.showMenuBarDecimals)
+            Toggle("菜单栏隐藏 SF Symbol", isOn: $monitor.hideMenuBarSymbols)
         }
     }
 
@@ -176,10 +177,13 @@ struct SettingsView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .buttonStyle(.plain)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 5)
                 .padding(.horizontal, 7)
+                .contentShape(Rectangle())
                 .background(selectedKeyID == key.id ? Color.accentColor.opacity(0.14) : Color.clear)
                 .clipShape(RoundedRectangle(cornerRadius: 6))
             }

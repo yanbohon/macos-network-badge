@@ -49,6 +49,8 @@ final class UsageSnapshotMonitor: ObservableObject {
         static let selectedSubscriptionID = "sub2api.selectedSubscriptionID"
         static let apiKey = "sub2api.apiKey"
         static let showMenuBarDecimals = "sub2api.showMenuBarDecimals"
+        static let hideMenuBarSymbols = "sub2api.hideMenuBarSymbols"
+        static let legacyHideSingleKeySymbol = "sub2api.hideSingleKeySymbol"
         static let refreshIntervalSeconds = "sub2api.refreshIntervalSeconds"
         static let serviceStatusLayoutMode = "sub2api.serviceStatusLayoutMode"
         static let snapshotCache = "sub2api.snapshotCache"
@@ -75,6 +77,11 @@ final class UsageSnapshotMonitor: ObservableObject {
     @Published var showMenuBarDecimals: Bool {
         didSet {
             userDefaults.set(showMenuBarDecimals, forKey: DefaultsKey.showMenuBarDecimals)
+        }
+    }
+    @Published var hideMenuBarSymbols: Bool {
+        didSet {
+            userDefaults.set(hideMenuBarSymbols, forKey: DefaultsKey.hideMenuBarSymbols)
         }
     }
     @Published var serviceStatusLayoutMode: ServiceStatusLayoutMode {
@@ -116,6 +123,10 @@ final class UsageSnapshotMonitor: ObservableObject {
             ? savedInterval
             : Self.defaultRefreshIntervalSeconds
         showMenuBarDecimals = userDefaults.object(forKey: DefaultsKey.showMenuBarDecimals) as? Bool ?? true
+        hideMenuBarSymbols =
+            userDefaults.object(forKey: DefaultsKey.hideMenuBarSymbols) as? Bool
+            ?? userDefaults.object(forKey: DefaultsKey.legacyHideSingleKeySymbol) as? Bool
+            ?? false
         serviceStatusLayoutMode = .verticalTwo
         usageKeys = []
 

@@ -11,13 +11,13 @@
     <string>用量监控</string>
 
     <key>CFBundleIdentifier</key>
-    <string>com.usagemonitor.app</string>
+    <string>com.usagemonitor.menubar</string>
 
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>2</string>
 
     <key>CFBundleShortVersionString</key>
-    <string>0.0.1</string>
+    <string>0.0.2</string>
 
     <key>CFBundleExecutable</key>
     <string>UsageMonitor</string>

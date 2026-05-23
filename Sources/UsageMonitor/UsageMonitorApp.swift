@@ -16,13 +16,18 @@ struct UsageMonitorApp: App {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let monitor = UsageSnapshotMonitor()
-    private let serviceStatusMonitor = ServiceStatusMonitor()
     private let settingsWindowController = SettingsWindowController()
+    private var monitor: UsageSnapshotMonitor?
+    private var serviceStatusMonitor: ServiceStatusMonitor?
     private var statusBarController: StatusBarController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        UsageDefaultsMigration.migrateStandardDefaultsFromLegacyBundleIfNeeded()
         NSApp.setActivationPolicy(.accessory)
+        let monitor = UsageSnapshotMonitor()
+        let serviceStatusMonitor = ServiceStatusMonitor()
+        self.monitor = monitor
+        self.serviceStatusMonitor = serviceStatusMonitor
         statusBarController = StatusBarController(
             usageMonitor: monitor,
             serviceStatusMonitor: serviceStatusMonitor,

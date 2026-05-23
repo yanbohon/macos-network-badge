@@ -1,0 +1,26 @@
+[0;32m=== Building 用量监控 ===[0m
+[1;33mCompiling Swift code (release mode)...[0m
+[0/1] Planning build
+Building for production...
+[0/3] Write sources
+[1/3] Write swift-version--58304C5D6DBC2206.txt
+[3/4] Compiling UsageMonitor StatusBarController.swift
+[3/5] Write Objects.LinkFileList
+[4/5] Linking UsageMonitor
+Build complete! (7.92s)
+[0;32mCompilation successful![0m
+[1;33mCreating .app bundle...[0m
+[1;33mCopying binary and resources...[0m
+[0;32mApp icon bundled![0m
+[1;33mCode signing with identity: Apple Development: 553327522@qq.com (782D8JM67C) (auto-detected Apple Development)[0m
+build/UsageMonitor.app: replacing existing signature
+[0;32mCode signing complete![0m
+
+[0;32m=== Build complete! ===[0m
+App bundle: [0;32mbuild/UsageMonitor.app[0m
+
+To run the app:
+  open build/UsageMonitor.app
+
+To code sign for distribution:
+  CODESIGN=1 CODESIGN_IDENTITY="Developer ID Application: Your Name" ./scripts/build-app.sh

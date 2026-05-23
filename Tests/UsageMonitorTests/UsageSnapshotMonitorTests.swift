@@ -226,6 +226,34 @@ final class UsageSnapshotMonitorTests: XCTestCase {
         XCTAssertTrue(monitor.showMenuBarDecimals)
     }
 
+    func testMenuBarSymbolVisibilityPreferenceDefaultsToShowingAndPersists() {
+        let defaults = UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!
+        let monitor = UsageSnapshotMonitor(
+            userDefaults: defaults,
+            client: Sub2APIClient(requestLoader: RequestRecordingLoader()),
+            timerFactory: ManualTimerFactory()
+        )
+
+        XCTAssertFalse(monitor.hideMenuBarSymbols)
+
+        monitor.hideMenuBarSymbols = true
+
+        XCTAssertEqual(defaults.object(forKey: UsageSnapshotMonitor.DefaultsKey.hideMenuBarSymbols) as? Bool, true)
+    }
+
+    func testMenuBarSymbolVisibilityPreferenceReadsLegacySingleKeySetting() {
+        let defaults = UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!
+        defaults.set(true, forKey: UsageSnapshotMonitor.DefaultsKey.legacyHideSingleKeySymbol)
+
+        let monitor = UsageSnapshotMonitor(
+            userDefaults: defaults,
+            client: Sub2APIClient(requestLoader: RequestRecordingLoader()),
+            timerFactory: ManualTimerFactory()
+        )
+
+        XCTAssertTrue(monitor.hideMenuBarSymbols)
+    }
+
     func testMenuBarDecimalPreferenceTruncatesOnlyMenuBarValue() async throws {
         let defaults = UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!
         let loader = RequestRecordingLoader()
