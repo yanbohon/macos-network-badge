@@ -1,4 +1,5 @@
 import XCTest
+import Combine
 @testable import UsageMonitor
 
 @MainActor
@@ -9,6 +10,8 @@ final class MultiKeyUsageMonitorTests: XCTestCase {
                 id: "a",
                 name: "Work",
                 symbolName: "bolt.fill",
+                symbolColorHex: "#38BDF8",
+                showsInMenuBar: true,
                 apiKey: "key-a",
                 baseURLMode: .inherited,
                 baseURLOverride: ""
@@ -17,6 +20,8 @@ final class MultiKeyUsageMonitorTests: XCTestCase {
                 id: "b",
                 name: "Home",
                 symbolName: "house.fill",
+                symbolColorHex: "#F97316",
+                showsInMenuBar: false,
                 apiKey: "key-b",
                 baseURLMode: .independent,
                 baseURLOverride: "https://home.example.com"
@@ -27,6 +32,64 @@ final class MultiKeyUsageMonitorTests: XCTestCase {
         let decoded = try JSONDecoder.sub2api.decode([UsageKeyConfiguration].self, from: data)
 
         XCTAssertEqual(decoded, original)
+    }
+
+    func testOldKeyConfigurationJSONDefaultsTopbarDisplayAndSymbolColor() throws {
+        let json = """
+        [
+          {
+            "id": "a",
+            "name": "Work",
+            "symbolName": "bolt.fill",
+            "apiKey": "key-a",
+            "baseURLMode": "inherited",
+            "baseURLOverride": ""
+          }
+        ]
+        """
+
+        let decoded = try JSONDecoder.sub2api.decode([UsageKeyConfiguration].self, from: Data(json.utf8))
+
+        XCTAssertEqual(decoded[0].symbolColorHex, UsageKeyConfiguration.defaultSymbolColorHex)
+        XCTAssertTrue(decoded[0].showsInMenuBar)
+    }
+
+    func testMenuBarRowsOnlyIncludeVisibleKeysAndCarrySymbolColor() {
+        let defaults = UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!
+        let monitor = UsageSnapshotMonitor(
+            userDefaults: defaults,
+            client: Sub2APIClient(requestLoader: RequestRecordingLoader()),
+            timerFactory: ManualTimerFactory()
+        )
+
+        monitor.updateBaseURL("https://global.example.com")
+        let firstID = monitor.usageKeys[0].id
+        monitor.updateKeyConfiguration(
+            id: firstID,
+            name: "Visible",
+            symbolName: "bolt.fill",
+            symbolColorHex: "#38bdf8",
+            showsInMenuBar: true,
+            apiKey: "key-a",
+            baseURLMode: .inherited,
+            baseURLOverride: ""
+        )
+        let hiddenID = monitor.addKey()
+        monitor.updateKeyConfiguration(
+            id: hiddenID,
+            name: "Hidden",
+            symbolName: "moon.fill",
+            symbolColorHex: "#f97316",
+            showsInMenuBar: false,
+            apiKey: "key-b",
+            baseURLMode: .inherited,
+            baseURLOverride: ""
+        )
+
+        XCTAssertEqual(monitor.usageKeys.count, 2)
+        XCTAssertEqual(monitor.keyState(id: hiddenID)?.configuration.showsInMenuBar, false)
+        XCTAssertEqual(monitor.menuBarKeyRows.map(\.id), [firstID])
+        XCTAssertEqual(monitor.menuBarKeyRows.first?.symbolColorHex, "#38BDF8")
     }
 
     func testMigratesOldSingleKeySettingsIntoFirstUsageKeyAndVerticalStatusLayout() {
@@ -45,6 +108,8 @@ final class MultiKeyUsageMonitorTests: XCTestCase {
         XCTAssertEqual(monitor.usageKeys.count, 1)
         XCTAssertEqual(monitor.usageKeys[0].configuration.name, "Key 1")
         XCTAssertEqual(monitor.usageKeys[0].configuration.symbolName, "key.fill")
+        XCTAssertEqual(monitor.usageKeys[0].configuration.symbolColorHex, UsageKeyConfiguration.defaultSymbolColorHex)
+        XCTAssertTrue(monitor.usageKeys[0].configuration.showsInMenuBar)
         XCTAssertEqual(monitor.usageKeys[0].configuration.apiKey, "old_key")
         XCTAssertEqual(monitor.usageKeys[0].configuration.baseURLMode, .inherited)
         XCTAssertEqual(monitor.serviceStatusLayoutMode, .verticalTwo)
@@ -261,5 +326,30 @@ final class MultiKeyUsageMonitorTests: XCTestCase {
         XCTAssertEqual(monitor.keyState(id: keyID)?.snapshotFreshness, .fresh)
         XCTAssertEqual(monitor.keyState(id: keyID)?.snapshot?.subscription.dailyUsageUSD, 96)
         XCTAssertEqual(monitor.keyState(id: keyID)?.thresholdAlertState, initialAlerts)
+    }
+
+    func testUpdatingKeyConfigurationPublishesChangeForObservers() {
+        let defaults = UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!
+        let monitor = UsageSnapshotMonitor(
+            userDefaults: defaults,
+            client: Sub2APIClient(requestLoader: RequestRecordingLoader()),
+            timerFactory: ManualTimerFactory()
+        )
+
+        let expectation = expectation(description: "usage monitor publishes configuration changes")
+        let cancellable = monitor.objectWillChange.sink { expectation.fulfill() }
+        let keyID = monitor.usageKeys[0].id
+
+        monitor.updateKeyConfiguration(
+            id: keyID,
+            name: "Work",
+            symbolName: "star.fill",
+            apiKey: "key-a",
+            baseURLMode: .inherited,
+            baseURLOverride: ""
+        )
+
+        wait(for: [expectation], timeout: 1)
+        _ = cancellable
     }
 }

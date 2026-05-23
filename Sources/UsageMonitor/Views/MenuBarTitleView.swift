@@ -4,7 +4,22 @@ struct MenuBarKeyDisplayRow: Equatable, Identifiable {
     let id: String
     let name: String
     let symbolName: String
+    let symbolColorHex: String
     let text: String
+
+    init(
+        id: String,
+        name: String,
+        symbolName: String,
+        symbolColorHex: String = UsageKeyConfiguration.defaultSymbolColorHex,
+        text: String
+    ) {
+        self.id = id
+        self.name = name
+        self.symbolName = symbolName
+        self.symbolColorHex = UsageKeyConfiguration.normalizedSymbolColorHex(symbolColorHex)
+        self.text = text
+    }
 }
 
 struct MenuBarTitleView: View {

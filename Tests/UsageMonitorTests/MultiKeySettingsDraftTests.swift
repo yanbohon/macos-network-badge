@@ -10,6 +10,8 @@ final class MultiKeySettingsDraftTests: XCTestCase {
                     id: "a",
                     name: "  Work  ",
                     symbolName: "  bolt.fill  ",
+                    symbolColorHex: "  #38bdf8  ",
+                    showsInMenuBar: true,
                     apiKey: "  key-a  ",
                     baseURLMode: .independent,
                     baseURLOverride: "  https://a.example.com/// "
@@ -18,6 +20,8 @@ final class MultiKeySettingsDraftTests: XCTestCase {
                     id: "b",
                     name: "   ",
                     symbolName: "   ",
+                    symbolColorHex: "   ",
+                    showsInMenuBar: false,
                     apiKey: "   ",
                     baseURLMode: .inherited,
                     baseURLOverride: "  https://unused.example.com/// "
@@ -30,10 +34,14 @@ final class MultiKeySettingsDraftTests: XCTestCase {
         XCTAssertEqual(normalized.defaultBaseURL, "https://global.example.com")
         XCTAssertEqual(normalized.keys[0].name, "Work")
         XCTAssertEqual(normalized.keys[0].symbolName, "bolt.fill")
+        XCTAssertEqual(normalized.keys[0].symbolColorHex, "#38BDF8")
+        XCTAssertTrue(normalized.keys[0].showsInMenuBar)
         XCTAssertEqual(normalized.keys[0].apiKey, "key-a")
         XCTAssertEqual(normalized.keys[0].baseURLOverride, "https://a.example.com")
         XCTAssertEqual(normalized.keys[1].name, "Key 2")
         XCTAssertEqual(normalized.keys[1].symbolName, "key.fill")
+        XCTAssertEqual(normalized.keys[1].symbolColorHex, UsageKeyConfiguration.defaultSymbolColorHex)
+        XCTAssertFalse(normalized.keys[1].showsInMenuBar)
         XCTAssertEqual(normalized.keys[1].apiKey, "")
         XCTAssertEqual(normalized.keys[1].baseURLOverride, "")
     }

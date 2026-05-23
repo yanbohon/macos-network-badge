@@ -149,7 +149,7 @@ final class StatusBarController: NSObject {
     }
 
     static func statusCellCount(forKeyCount keyCount: Int) -> Int {
-        3
+        keyCount <= 1 ? 2 : 3
     }
 
     static func statusItemImage(
@@ -202,7 +202,11 @@ final class StatusBarController: NSObject {
         let gridY = verticalGridY(in: contentRect, stackHeight: stackHeight)
         let gridX = contentRect.minX
 
-        for (index, cell) in statusCells.prefix(maximumStatusCellCount).enumerated() {
+        let renderedStatusCells = MenuBarTitleView.normalizedStatusCells(
+            for: statusCells,
+            count: statusCellCount(forKeyCount: keyRows.count)
+        )
+        for (index, cell) in renderedStatusCells.enumerated() {
             cell.kind.statusBarColor
                 .withAlphaComponent(statusCellOpacity(for: cell.kind, statusCellsAreStale: statusCellsAreStale))
                 .setFill()
@@ -248,13 +252,14 @@ final class StatusBarController: NSObject {
 
                 if !shouldHideSymbols {
                     let symbolName = MenuBarTitleView.resolvedSymbolName(row.symbolName)
+                    let symbolColor = SymbolColor.nsColor(hex: row.symbolColorHex)
                     let symbolRect = NSRect(
                         x: x,
                         y: topY + keySymbolOffsetY(for: rowHeight, keyCount: effectiveKeyCount),
                         width: symbolWidth,
                         height: symbolWidth
                     )
-                    drawSymbol(named: symbolName, in: symbolRect, tintColor: textColor)
+                    drawSymbol(named: symbolName, in: symbolRect, tintColor: symbolColor)
                 }
 
                 let paragraphStyle = NSMutableParagraphStyle()
@@ -653,7 +658,6 @@ private final class StatusBarBadgeView: NSView {
             addSubview(textView)
             let imageView = NSImageView(frame: .zero)
             imageView.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 10, weight: .medium)
-            imageView.contentTintColor = .white
             symbolViews.append(imageView)
             addSubview(imageView)
         }
@@ -679,6 +683,7 @@ private final class StatusBarBadgeView: NSView {
                 pointSize: effectiveSymbolWidth,
                 weight: .medium
             )
+            symbolViews[index].contentTintColor = SymbolColor.nsColor(hex: row.symbolColorHex)
             symbolViews[index].image = NSImage(systemSymbolName: symbolName, accessibilityDescription: row.name)
         }
     }
@@ -792,7 +797,7 @@ extension StatusBarController {
     }
 
     static func statusCellRowCount(keyCount: Int) -> Int {
-        3
+        statusCellCount(forKeyCount: keyCount)
     }
 
     static func statusCellFrame(at index: Int, gridX: CGFloat, gridY: CGFloat, keyCount: Int) -> NSRect {
@@ -811,10 +816,10 @@ extension StatusBarController {
 
 extension ServiceStatusLayoutMode {
     func statusCellCount(showMenuBarDecimals: Bool) -> Int {
-        3
+        statusCellCount(keyCount: 1, showMenuBarDecimals: showMenuBarDecimals)
     }
 
     func statusCellCount(keyCount: Int, showMenuBarDecimals: Bool) -> Int {
-        3
+        keyCount <= 1 ? 2 : 3
     }
 }

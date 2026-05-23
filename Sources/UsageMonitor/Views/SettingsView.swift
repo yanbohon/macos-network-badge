@@ -48,9 +48,11 @@ struct SettingsView: View {
         }
         .onChange(of: draft.defaultBaseURL) { _ in
             clearConnectionStatus()
+            commitDraft()
         }
         .onChange(of: draft.keys) { _ in
             clearConnectionStatus()
+            commitDraft()
         }
         .onChange(of: includeBetaUpdates) { newValue in
             updateDefaults.set(newValue, forKey: UpdateDefaultsKey.includeBetaUpdates)
@@ -160,32 +162,7 @@ struct SettingsView: View {
             }
 
             ForEach(draft.keys) { key in
-                Button {
-                    selectedKeyID = key.id
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: MenuBarTitleView.resolvedSymbolName(key.symbolName))
-                            .frame(width: 16)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(key.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "未命名 Key" : key.name)
-                            Text(key.baseURLMode == .inherited ? "继承全局 Base URL" : "独立 Base URL")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Text(stateSummary(for: key.id))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .buttonStyle(.plain)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 5)
-                .padding(.horizontal, 7)
-                .contentShape(Rectangle())
-                .background(selectedKeyID == key.id ? Color.accentColor.opacity(0.14) : Color.clear)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+                keyRowButton(for: key)
             }
         }
     }
@@ -205,6 +182,8 @@ struct SettingsView: View {
                 secure: false,
                 helper: "无效名称会显示默认 key.fill。"
             )
+            symbolColorInput
+            Toggle("在菜单栏显示", isOn: selectedKeyShowsInMenuBarBinding)
             labeledInput(
                 title: "API Key",
                 placeholder: "输入 API Key",
@@ -230,14 +209,6 @@ struct SettingsView: View {
             }
 
             HStack {
-                Button {
-                    Task { await validateSelectedKey() }
-                } label: {
-                    Text(primaryButtonTitle)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(isBusy)
-
                 Button {
                     commitDraft()
                     Task { await monitor.refreshAll() }
@@ -306,7 +277,7 @@ struct SettingsView: View {
     }
 
     private var isBusy: Bool {
-        connectionStatus.isValidating || monitor.isRefreshing
+        connectionStatus.isValidating
     }
 
     private var updateCheckButtonTitle: String {
@@ -374,11 +345,69 @@ struct SettingsView: View {
             .foregroundStyle(.primary)
     }
 
+    private func keyRowButton(for key: SettingsDraft.KeyDraft) -> some View {
+        Button {
+            selectedKeyID = key.id
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: MenuBarTitleView.resolvedSymbolName(key.symbolName))
+                    .foregroundStyle(SymbolColor.swiftUIColor(hex: key.symbolColorHex))
+                    .frame(width: 16)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(key.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "未命名 Key" : key.name)
+                    Text(keySummary(for: key))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text(stateSummary(for: key.id))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 5)
+            .padding(.horizontal, 7)
+            .contentShape(Rectangle())
+            .background(selectedKeyID == key.id ? Color.accentColor.opacity(0.14) : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     private func refreshIntervalLabel(seconds: Int) -> String {
         if seconds < 60 {
             return "\(seconds) 秒"
         }
         return "\(seconds / 60) 分钟"
+    }
+
+    private var symbolColorInput: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("SF Symbol 颜色")
+                .font(.callout.weight(.semibold))
+
+            HStack(spacing: 8) {
+                ColorPicker(
+                    "SF Symbol 颜色",
+                    selection: selectedKeySymbolColorBinding,
+                    supportsOpacity: false
+                )
+                .labelsHidden()
+
+                NativeTextInput(
+                    placeholder: UsageKeyConfiguration.defaultSymbolColorHex,
+                    text: selectedKeyBinding(\.symbolColorHex),
+                    secure: false
+                )
+                .frame(maxWidth: .infinity)
+            }
+
+            Text("支持 #RRGGBB，保存时自动标准化。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private func validateAndRefresh() async {
@@ -437,6 +466,11 @@ struct SettingsView: View {
         return draft.keys[selectedKeyIndex]
     }
 
+    private func keySummary(for key: SettingsDraft.KeyDraft) -> String {
+        let baseURLText = key.baseURLMode == .inherited ? "继承全局 Base URL" : "独立 Base URL"
+        return key.showsInMenuBar ? baseURLText : "\(baseURLText) · 菜单栏隐藏"
+    }
+
     private func selectedKeyBinding(_ keyPath: WritableKeyPath<SettingsDraft.KeyDraft, String>) -> Binding<String> {
         Binding(
             get: {
@@ -446,6 +480,34 @@ struct SettingsView: View {
             set: { value in
                 guard let selectedKeyIndex else { return }
                 draft.keys[selectedKeyIndex][keyPath: keyPath] = value
+            }
+        )
+    }
+
+    private var selectedKeyShowsInMenuBarBinding: Binding<Bool> {
+        Binding(
+            get: {
+                guard let selectedKeyIndex else { return true }
+                return draft.keys[selectedKeyIndex].showsInMenuBar
+            },
+            set: { value in
+                guard let selectedKeyIndex else { return }
+                draft.keys[selectedKeyIndex].showsInMenuBar = value
+            }
+        )
+    }
+
+    private var selectedKeySymbolColorBinding: Binding<Color> {
+        Binding(
+            get: {
+                guard let selectedKeyIndex else {
+                    return SymbolColor.swiftUIColor(hex: UsageKeyConfiguration.defaultSymbolColorHex)
+                }
+                return SymbolColor.swiftUIColor(hex: draft.keys[selectedKeyIndex].symbolColorHex)
+            },
+            set: { value in
+                guard let selectedKeyIndex else { return }
+                draft.keys[selectedKeyIndex].symbolColorHex = SymbolColor.hexString(from: value)
             }
         )
     }

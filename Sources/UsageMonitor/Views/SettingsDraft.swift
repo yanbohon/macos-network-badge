@@ -8,6 +8,8 @@ protocol SettingsValuesPersisting {
         id: String,
         name: String,
         symbolName: String,
+        symbolColorHex: String,
+        showsInMenuBar: Bool,
         apiKey: String,
         baseURLMode: UsageKeyBaseURLMode,
         baseURLOverride: String
@@ -19,6 +21,8 @@ struct SettingsDraft: Equatable {
         var id: String
         var name: String
         var symbolName: String
+        var symbolColorHex: String
+        var showsInMenuBar: Bool
         var apiKey: String
         var baseURLMode: UsageKeyBaseURLMode
         var baseURLOverride: String
@@ -27,6 +31,8 @@ struct SettingsDraft: Equatable {
             id: String,
             name: String,
             symbolName: String,
+            symbolColorHex: String = UsageKeyConfiguration.defaultSymbolColorHex,
+            showsInMenuBar: Bool = true,
             apiKey: String,
             baseURLMode: UsageKeyBaseURLMode,
             baseURLOverride: String
@@ -34,6 +40,8 @@ struct SettingsDraft: Equatable {
             self.id = id
             self.name = name
             self.symbolName = symbolName
+            self.symbolColorHex = symbolColorHex
+            self.showsInMenuBar = showsInMenuBar
             self.apiKey = apiKey
             self.baseURLMode = baseURLMode
             self.baseURLOverride = baseURLOverride
@@ -43,6 +51,8 @@ struct SettingsDraft: Equatable {
             id = configuration.id
             name = configuration.name
             symbolName = configuration.symbolName
+            symbolColorHex = configuration.symbolColorHex
+            showsInMenuBar = configuration.showsInMenuBar
             apiKey = configuration.apiKey
             baseURLMode = configuration.baseURLMode
             baseURLOverride = configuration.baseURLOverride
@@ -59,6 +69,8 @@ struct SettingsDraft: Equatable {
                 id: "legacy-first-key",
                 name: "Key 1",
                 symbolName: UsageKeyConfiguration.defaultSymbolName,
+                symbolColorHex: UsageKeyConfiguration.defaultSymbolColorHex,
+                showsInMenuBar: true,
                 apiKey: apiKey,
                 baseURLMode: .inherited,
                 baseURLOverride: ""
@@ -74,6 +86,8 @@ struct SettingsDraft: Equatable {
                     id: UUID().uuidString,
                     name: "Key 1",
                     symbolName: UsageKeyConfiguration.defaultSymbolName,
+                    symbolColorHex: UsageKeyConfiguration.defaultSymbolColorHex,
+                    showsInMenuBar: true,
                     apiKey: "",
                     baseURLMode: .inherited,
                     baseURLOverride: ""
@@ -96,6 +110,8 @@ struct SettingsDraft: Equatable {
                         id: UUID().uuidString,
                         name: "Key 1",
                         symbolName: UsageKeyConfiguration.defaultSymbolName,
+                        symbolColorHex: UsageKeyConfiguration.defaultSymbolColorHex,
+                        showsInMenuBar: true,
                         apiKey: newValue,
                         baseURLMode: .inherited,
                         baseURLOverride: ""
@@ -116,6 +132,8 @@ struct SettingsDraft: Equatable {
                 id: key.id,
                 name: key.name,
                 symbolName: key.symbolName,
+                symbolColorHex: key.symbolColorHex,
+                showsInMenuBar: key.showsInMenuBar,
                 apiKey: key.apiKey,
                 baseURLMode: key.baseURLMode,
                 baseURLOverride: key.baseURLOverride
@@ -140,6 +158,8 @@ struct SettingsDraft: Equatable {
                 id: key.id,
                 name: key.name,
                 symbolName: key.symbolName,
+                symbolColorHex: key.symbolColorHex,
+                showsInMenuBar: key.showsInMenuBar,
                 apiKey: key.apiKey,
                 baseURLMode: key.baseURLMode,
                 baseURLOverride: key.baseURLOverride

@@ -51,7 +51,7 @@ final class StatusBarControllerTests: XCTestCase {
         XCTAssertEqual(ServiceStatusLayoutMode.allCases, [.verticalTwo])
         XCTAssertEqual(
             ServiceStatusLayoutMode.verticalTwo.statusCellCount(keyCount: 1, showMenuBarDecimals: true),
-            3
+            2
         )
         XCTAssertEqual(
             ServiceStatusLayoutMode.verticalTwo.statusCellCount(keyCount: 2, showMenuBarDecimals: true),
@@ -61,8 +61,8 @@ final class StatusBarControllerTests: XCTestCase {
             ServiceStatusLayoutMode.verticalTwo.statusCellCount(keyCount: 4, showMenuBarDecimals: false),
             3
         )
-        XCTAssertEqual(StatusBarController.statusCellCount(forKeyCount: 0), 3)
-        XCTAssertEqual(StatusBarController.statusCellCount(forKeyCount: 1), 3)
+        XCTAssertEqual(StatusBarController.statusCellCount(forKeyCount: 0), 2)
+        XCTAssertEqual(StatusBarController.statusCellCount(forKeyCount: 1), 2)
         XCTAssertEqual(StatusBarController.statusCellCount(forKeyCount: 2), 3)
         XCTAssertEqual(StatusBarController.statusCellCount(forKeyCount: 4), 3)
     }
@@ -169,7 +169,7 @@ final class StatusBarControllerTests: XCTestCase {
 
         XCTAssertEqual(
             StatusBarController.verticalGridY(in: contentRect, stackHeight: stackHeight),
-            1
+            3.75
         )
     }
 
@@ -252,6 +252,96 @@ final class StatusBarControllerTests: XCTestCase {
         XCTAssertFalse(source.contains("statusItem.button?.image = image"))
     }
 
+    func testStatusBarBadgeImageReflectsPerKeySymbolColor() throws {
+        let redRows = [
+            MenuBarKeyDisplayRow(
+                id: "a",
+                name: "A",
+                symbolName: "key.fill",
+                symbolColorHex: "#FF3B30",
+                text: "$1.23"
+            ),
+        ]
+        let blueRows = [
+            MenuBarKeyDisplayRow(
+                id: "a",
+                name: "A",
+                symbolName: "key.fill",
+                symbolColorHex: "#38BDF8",
+                text: "$1.23"
+            ),
+        ]
+        let cells = [
+            ServiceStatusDisplayCell(kind: .green, probe: nil),
+            ServiceStatusDisplayCell(kind: .green, probe: nil),
+        ]
+
+        let redImage = StatusBarController.statusItemImage(
+            keyRows: redRows,
+            statusCells: cells,
+            statusCellsAreStale: false,
+            showMenuBarDecimals: true,
+            hideMenuBarSymbols: false,
+            height: 24
+        )
+        let blueImage = StatusBarController.statusItemImage(
+            keyRows: blueRows,
+            statusCells: cells,
+            statusCellsAreStale: false,
+            showMenuBarDecimals: true,
+            hideMenuBarSymbols: false,
+            height: 24
+        )
+
+        let redData = try imageData(redImage)
+        let blueData = try imageData(blueImage)
+
+        XCTAssertNotEqual(redData as Data, blueData as Data)
+    }
+
+    func testStatusBarControllerUpdatesKeySymbolAfterConfigurationChange() async throws {
+        let defaults = UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!
+        let usageLoader = RequestRecordingLoader()
+        let usageMonitor = UsageSnapshotMonitor(
+            userDefaults: defaults,
+            client: Sub2APIClient(requestLoader: usageLoader),
+            timerFactory: ManualTimerFactory()
+        )
+        let serviceMonitor = ServiceStatusMonitor(
+            client: StubServiceStatusClient(results: [
+                .success(Self.statusResult()),
+            ]),
+            timerFactory: ManualTimerFactory()
+        )
+        let controller = StatusBarController(
+            usageMonitor: usageMonitor,
+            serviceStatusMonitor: serviceMonitor,
+            settingsWindowController: SettingsWindowController(activateApplication: {}),
+            statusBar: .system
+        )
+
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        let button = try statusItemButton(from: controller)
+        let initialImageDescription = try XCTUnwrap(firstSymbolImageDescription(in: button))
+        XCTAssertTrue(initialImageDescription.contains("symbol = key.fill"))
+
+        let keyID = usageMonitor.usageKeys[0].id
+        usageMonitor.updateKeyConfiguration(
+            id: keyID,
+            name: "Work",
+            symbolName: "star.fill",
+            apiKey: "key-a",
+            baseURLMode: .inherited,
+            baseURLOverride: ""
+        )
+
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        let updatedImageDescription = try XCTUnwrap(firstSymbolImageDescription(in: button))
+        XCTAssertTrue(updatedImageDescription.contains("symbol = star.fill"))
+    }
+
     func testVerticalLayoutReservesRoomForStatusStripSpacingAndShortCurrencyText() {
         let displayText = "$5"
         let font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
@@ -295,5 +385,57 @@ final class StatusBarControllerTests: XCTestCase {
         XCTAssertEqual(textFrame.minY, 1)
         XCTAssertEqual(textFrame.width, 37)
         XCTAssertEqual(textFrame.height, 17)
+    }
+
+    private func statusItemButton(from controller: StatusBarController) throws -> NSStatusBarButton {
+        let statusItem = try XCTUnwrap(
+            Mirror(reflecting: controller).children.first(where: { $0.label == "statusItem" })?.value as? NSStatusItem
+        )
+        return try XCTUnwrap(statusItem.button)
+    }
+
+    private func imageData(_ image: NSImage) throws -> CFData {
+        var proposedRect = NSRect(origin: .zero, size: image.size)
+        let cgImage = try XCTUnwrap(image.cgImage(forProposedRect: &proposedRect, context: nil, hints: nil))
+        return try XCTUnwrap(cgImage.dataProvider?.data)
+    }
+
+    private func firstSymbolImageDescription(in button: NSStatusBarButton) throws -> String {
+        let imageView = try XCTUnwrap(findFirstImageView(in: button))
+        return try XCTUnwrap(imageView.image?.description)
+    }
+
+    private func findFirstImageView(in view: NSView) -> NSImageView? {
+        if let imageView = view as? NSImageView {
+            return imageView
+        }
+        for subview in view.subviews {
+            if let imageView = findFirstImageView(in: subview) {
+                return imageView
+            }
+        }
+        return nil
+    }
+
+    private static func statusResult() -> StatusAPIResult {
+        StatusAPIResult(
+            response: ServiceStatusResponse(
+                allOK: true,
+                generatedAt: 1_778_762_578,
+                services: [
+                    ServiceStatusService(
+                        model: "gpt-5.5",
+                        uptimePct: 99.5,
+                        last: ServiceStatusProbe(ts: 9, ok: true, latencyMS: 1_111, error: nil),
+                        history: [
+                            ServiceStatusProbe(ts: 1, ok: true, latencyMS: 100, error: nil),
+                            ServiceStatusProbe(ts: 2, ok: true, latencyMS: 3_000, error: nil),
+                            ServiceStatusProbe(ts: 3, ok: false, latencyMS: nil, error: "timeout"),
+                        ]
+                    ),
+                ]
+            ),
+            prettyRawJSON: #"{"all_ok":true}"#
+        )
     }
 }

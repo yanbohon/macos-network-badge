@@ -130,6 +130,7 @@ struct MenuBarView: View {
                 VStack(spacing: 2) {
                     HStack(spacing: 6) {
                         Image(systemName: MenuBarTitleView.resolvedSymbolName(entry.configuration.symbolName))
+                            .foregroundStyle(SymbolColor.swiftUIColor(hex: entry.configuration.symbolColorHex))
                         Text(entry.configuration.name)
                             .font(.subheadline.bold())
                     }
@@ -354,6 +355,7 @@ struct MenuBarView: View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
                 Image(systemName: MenuBarTitleView.resolvedSymbolName(entry.configuration.symbolName))
+                    .foregroundStyle(SymbolColor.swiftUIColor(hex: entry.configuration.symbolColorHex))
                 Text(entry.configuration.name)
                     .font(.caption.bold())
                 Spacer()

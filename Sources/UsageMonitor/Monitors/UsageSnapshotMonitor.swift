@@ -182,11 +182,12 @@ final class UsageSnapshotMonitor: ObservableObject {
     }
 
     var menuBarKeyRows: [MenuBarKeyDisplayRow] {
-        usageKeys.map { entry in
+        usageKeys.filter { $0.configuration.showsInMenuBar }.map { entry in
             MenuBarKeyDisplayRow(
                 id: entry.id,
                 name: entry.configuration.name,
                 symbolName: entry.configuration.symbolName,
+                symbolColorHex: entry.configuration.symbolColorHex,
                 text: menuBarText(for: entry)
             )
         }
@@ -244,6 +245,8 @@ final class UsageSnapshotMonitor: ObservableObject {
             id: first.id,
             name: first.configuration.name,
             symbolName: first.configuration.symbolName,
+            symbolColorHex: first.configuration.symbolColorHex,
+            showsInMenuBar: first.configuration.showsInMenuBar,
             apiKey: value,
             baseURLMode: first.configuration.baseURLMode,
             baseURLOverride: first.configuration.baseURLOverride
@@ -259,6 +262,8 @@ final class UsageSnapshotMonitor: ObservableObject {
                 id: keyID,
                 name: "Key \(nextIndex + 1)",
                 symbolName: UsageKeyConfiguration.defaultSymbolName,
+                symbolColorHex: UsageKeyConfiguration.defaultSymbolColorHex,
+                showsInMenuBar: true,
                 apiKey: "",
                 baseURLMode: .inherited,
                 baseURLOverride: ""
@@ -289,12 +294,37 @@ final class UsageSnapshotMonitor: ObservableObject {
         baseURLMode: UsageKeyBaseURLMode,
         baseURLOverride: String
     ) {
+        guard let current = usageKeys.first(where: { $0.id == id })?.configuration else { return }
+        updateKeyConfiguration(
+            id: id,
+            name: name,
+            symbolName: symbolName,
+            symbolColorHex: current.symbolColorHex,
+            showsInMenuBar: current.showsInMenuBar,
+            apiKey: apiKey,
+            baseURLMode: baseURLMode,
+            baseURLOverride: baseURLOverride
+        )
+    }
+
+    func updateKeyConfiguration(
+        id: String,
+        name: String,
+        symbolName: String,
+        symbolColorHex: String,
+        showsInMenuBar: Bool,
+        apiKey: String,
+        baseURLMode: UsageKeyBaseURLMode,
+        baseURLOverride: String
+    ) {
         guard let index = usageKeys.firstIndex(where: { $0.id == id }) else { return }
         let previousFingerprint = fingerprint(for: usageKeys[index].configuration)
         let nextConfiguration = UsageKeyConfiguration(
             id: id,
             name: name,
             symbolName: symbolName,
+            symbolColorHex: symbolColorHex,
+            showsInMenuBar: showsInMenuBar,
             apiKey: apiKey,
             baseURLMode: baseURLMode,
             baseURLOverride: baseURLOverride

@@ -27,8 +27,21 @@ final class MenuBarViewTests: XCTestCase {
     func testSettingsKeyRowsExposeWholeRowClickTarget() throws {
         let source = try settingsViewSource()
 
-        XCTAssertTrue(source.contains(".frame(maxWidth: .infinity, alignment: .leading)"))
+        XCTAssertTrue(source.contains("private func keyRowButton"))
         XCTAssertTrue(source.contains(".contentShape(Rectangle())"))
+    }
+
+    func testSettingsViewHasOnlyOnePrimaryValidationAction() throws {
+        let source = try settingsViewSource()
+        let occurrences = source.components(separatedBy: "Text(primaryButtonTitle)").count - 1
+
+        XCTAssertEqual(occurrences, 1)
+    }
+
+    func testSettingsValidationButtonDoesNotDependOnBackgroundRefreshState() throws {
+        let source = try settingsViewSource()
+
+        XCTAssertFalse(source.contains("connectionStatus.isValidating || monitor.isRefreshing"))
     }
 
     func testSettingsExposesSingleKeySymbolVisibilityToggle() throws {
@@ -36,6 +49,14 @@ final class MenuBarViewTests: XCTestCase {
 
         XCTAssertTrue(source.contains("菜单栏隐藏 SF Symbol"))
         XCTAssertTrue(source.contains("$monitor.hideMenuBarSymbols"))
+    }
+
+    func testSettingsExposesPerKeyMenuBarAndSymbolColorControls() throws {
+        let source = try settingsViewSource()
+
+        XCTAssertTrue(source.contains("在菜单栏显示"))
+        XCTAssertTrue(source.contains("SF Symbol 颜色"))
+        XCTAssertTrue(source.contains("ColorPicker("))
     }
 
     private func menuBarViewSource() throws -> String {

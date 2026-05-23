@@ -17,10 +17,13 @@ enum UsageKeyBaseURLMode: String, Codable, CaseIterable, Equatable {
 
 struct UsageKeyConfiguration: Codable, Equatable, Identifiable {
     static let defaultSymbolName = "key.fill"
+    static let defaultSymbolColorHex = "#FFFFFF"
 
     let id: String
     var name: String
     var symbolName: String
+    var symbolColorHex: String
+    var showsInMenuBar: Bool
     var apiKey: String
     var baseURLMode: UsageKeyBaseURLMode
     var baseURLOverride: String
@@ -29,6 +32,8 @@ struct UsageKeyConfiguration: Codable, Equatable, Identifiable {
         id: String = UUID().uuidString,
         name: String,
         symbolName: String = Self.defaultSymbolName,
+        symbolColorHex: String = Self.defaultSymbolColorHex,
+        showsInMenuBar: Bool = true,
         apiKey: String = "",
         baseURLMode: UsageKeyBaseURLMode = .inherited,
         baseURLOverride: String = ""
@@ -36,9 +41,36 @@ struct UsageKeyConfiguration: Codable, Equatable, Identifiable {
         self.id = id
         self.name = name
         self.symbolName = symbolName
+        self.symbolColorHex = Self.normalizedSymbolColorHex(symbolColorHex)
+        self.showsInMenuBar = showsInMenuBar
         self.apiKey = apiKey
         self.baseURLMode = baseURLMode
         self.baseURLOverride = baseURLOverride
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case symbolName
+        case symbolColorHex
+        case showsInMenuBar
+        case apiKey
+        case baseURLMode
+        case baseURLOverride
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        symbolName = try container.decodeIfPresent(String.self, forKey: .symbolName) ?? Self.defaultSymbolName
+        let decodedSymbolColorHex = try container.decodeIfPresent(String.self, forKey: .symbolColorHex)
+            ?? Self.defaultSymbolColorHex
+        symbolColorHex = Self.normalizedSymbolColorHex(decodedSymbolColorHex)
+        showsInMenuBar = try container.decodeIfPresent(Bool.self, forKey: .showsInMenuBar) ?? true
+        apiKey = try container.decodeIfPresent(String.self, forKey: .apiKey) ?? ""
+        baseURLMode = try container.decodeIfPresent(UsageKeyBaseURLMode.self, forKey: .baseURLMode) ?? .inherited
+        baseURLOverride = try container.decodeIfPresent(String.self, forKey: .baseURLOverride) ?? ""
     }
 
     func normalized(index: Int) -> UsageKeyConfiguration {
@@ -51,6 +83,8 @@ struct UsageKeyConfiguration: Codable, Equatable, Identifiable {
             id: id,
             name: trimmedName.isEmpty ? "Key \(index + 1)" : trimmedName,
             symbolName: trimmedSymbol.isEmpty ? Self.defaultSymbolName : trimmedSymbol,
+            symbolColorHex: Self.normalizedSymbolColorHex(symbolColorHex),
+            showsInMenuBar: showsInMenuBar,
             apiKey: apiKey.trimmingCharacters(in: .whitespacesAndNewlines),
             baseURLMode: baseURLMode,
             baseURLOverride: normalizedOverride
@@ -72,6 +106,16 @@ struct UsageKeyConfiguration: Codable, Equatable, Identifiable {
             normalized.removeLast()
         }
         return normalized
+    }
+
+    static func normalizedSymbolColorHex(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        let hex = trimmed.hasPrefix("#") ? String(trimmed.dropFirst()) : trimmed
+        let allowed = CharacterSet(charactersIn: "0123456789ABCDEF")
+        guard hex.count == 6, hex.unicodeScalars.allSatisfy({ allowed.contains($0) }) else {
+            return defaultSymbolColorHex
+        }
+        return "#\(hex)"
     }
 }
 

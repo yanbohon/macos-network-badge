@@ -47,6 +47,8 @@ private final class RecordingSettingsPersister: SettingsValuesPersisting {
         id: String,
         name: String,
         symbolName: String,
+        symbolColorHex: String,
+        showsInMenuBar: Bool,
         apiKey: String,
         baseURLMode: UsageKeyBaseURLMode,
         baseURLOverride: String
@@ -56,6 +58,8 @@ private final class RecordingSettingsPersister: SettingsValuesPersisting {
                 id: id,
                 name: name,
                 symbolName: symbolName,
+                symbolColorHex: symbolColorHex,
+                showsInMenuBar: showsInMenuBar,
                 apiKey: apiKey,
                 baseURLMode: baseURLMode,
                 baseURLOverride: baseURLOverride
