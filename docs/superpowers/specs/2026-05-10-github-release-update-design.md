@@ -2,9 +2,9 @@
 
 ## Goal
 
-Add a practical update check flow to `用量监控` from the settings window.
+Add a practical manual and background update check flow to `用量监控`.
 
-The app lets users discover newer stable GitHub Release builds from settings, while keeping installation explicit through the existing DMG flow. There is one stable update channel.
+The app discovers newer stable GitHub Release builds in the background and from settings, while keeping installation explicit through the existing DMG flow. There is one stable update channel.
 
 ## Context
 
@@ -17,6 +17,9 @@ The project does not currently have an Apple Developer ID signing and notarizati
 In scope:
 
 - Add a manual update check in `设置 > 关于`.
+- Check automatically after launch and while the app remains running.
+- Limit background network checks to once per 24 hours.
+- Suppress repeated prompts for the same version for seven days.
 - Check releases from `https://api.github.com/repos/yanbohon/macos-network-badge/releases`.
 - Ignore draft releases.
 - Ignore prerelease releases and prerelease version tags.
@@ -29,7 +32,6 @@ In scope:
 
 Out of scope:
 
-- Background automatic update checks.
 - Silent install or automatic app replacement.
 - Sparkle integration.
 - Code signing, notarization, or Apple Developer certificate setup.
@@ -55,6 +57,11 @@ Behavior:
 - If a newer stable release exists, show `发现新版本 vX.Y.Z` and present a confirmation alert.
 - If the check fails, show a short inline error and keep the current settings intact.
 - Confirming the alert opens the GitHub Release page in the browser. The user still installs from the DMG manually.
+- A due background check runs asynchronously after launch and then while the app remains open.
+- Background checks show the same update alert only when a newer stable version is available.
+- Background failures and up-to-date results remain silent.
+- `下载更新` opens the matching GitHub Release page; `稍后` dismisses the alert.
+- The same version is not prompted again for seven days, while a newly published version can be prompted immediately.
 
 No modal alert is required for no-update or network failure states.
 
@@ -112,6 +119,18 @@ Responsibilities:
 
 This type owns update decision logic, not SwiftUI layout.
 
+### `BackgroundUpdateCoordinator`
+
+Responsibilities:
+
+- Start with the application lifecycle and evaluate whether a check is due.
+- Poll the due state hourly without requesting GitHub more than once per 24 hours.
+- Persist the last background attempt and reminder state in UserDefaults.
+- Ignore up-to-date and failure results without interrupting the user.
+- Present an `NSAlert` for a newer stable release and open its GitHub Release page after confirmation.
+
+This type owns background scheduling and prompt throttling, not release parsing or version comparison.
+
 ### `SettingsView`
 
 Responsibilities:
@@ -142,7 +161,9 @@ Keep errors short and actionable:
 
 The app should not crash or clear settings when update checks fail.
 
-If multiple checks are triggered quickly, only one check should be active at a time. The UI button disabled state is enough for the first version.
+Background failures should remain silent and count as an attempt for the 24-hour rate limit.
+
+If background and manual checks overlap, the coordinator should share one in-flight request and allow only one alert for its result. The manual UI button remains disabled while its caller awaits that shared result.
 
 ## Testing
 
@@ -156,6 +177,9 @@ Add unit tests for:
 - excluding prerelease tags even if their GitHub metadata is incorrect.
 - choosing the highest newer matching release.
 - using the GitHub Release page for an available update.
+- limiting background requests to once per 24 hours.
+- keeping background failures silent.
+- suppressing the same version's reminder for seven days while allowing a newer version immediately.
 
 Add view or state tests only where practical. Manual verification should cover the settings UI states at the default and minimum window sizes.
 
@@ -167,6 +191,7 @@ The current design keeps that future migration clean by isolating:
 
 - release fetching in `GitHubReleaseClient`
 - update eligibility in `UpdateChecker`
+- background scheduling in `BackgroundUpdateCoordinator`
 - UI state in `SettingsView`
 
 At that point, the UI can keep the same `检查更新` action while replacing browser navigation with Sparkle's updater flow.
@@ -179,6 +204,8 @@ The work is complete when:
 - Update checks ignore drafts, prereleases, and prerelease tags.
 - Newer releases are detected from GitHub Releases.
 - The app presents an alert and opens the GitHub Release page after confirmation.
+- A background check runs when due without blocking launch or prompting for failures and no-update results.
+- Background requests are limited to once per 24 hours and same-version prompts to once per seven days.
 - Ordinary failures show inline status text and do not interrupt the user.
 - The release workflow publishes a verified arm64 DMG for stable versions only.
 - The implementation is covered by focused unit tests for version parsing, filtering, and update selection.

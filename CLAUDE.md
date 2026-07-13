@@ -31,6 +31,7 @@ No test should call a real service. Use the injectable `Sub2APIRequestLoading` p
 - `Sub2APIModels` — usage response DTOs for `UsageResponse`, `UsageSubscription`, usage buckets, and model stats
 - `Sub2APIClient` — `GET /v1/usage` request construction, response decoding, HTTP/network/API error mapping
 - `UsageSnapshotMonitor` — `ObservableObject` in `Monitors/UsageSnapshotMonitor.swift` owning config, validation, refresh, cached snapshot, error state, and timer state
+- `BackgroundUpdateCoordinator` — daily GitHub Release checks, reminder throttling, and native update alerts
 - `UsageFormatters` — currency, menu-bar daily usage, balance, usage limits, bucket text, expiry, and quota health formatting
 - `MenuBarView` — popover UI for remaining balance, plan, mode, subscription, usage summary, and model stats
 - `SettingsView` — Base URL, API Key, decimal-display toggle, refresh interval, validation, and manual refresh controls
@@ -44,9 +45,10 @@ UserDefaults:
 - API Key
 - Refresh interval
 - Menu-bar decimal display toggle
+- Last background update check and update reminder state
 
 Old email and selected-subscription UserDefaults keys are removed during migration and should not be used by new behavior. Do not read or write Keychain in normal app runtime.
 
 ## Removed Domain
 
-Do not reintroduce account login, web login, subscription selection, network latency monitoring, GPS tracking, maps, quality databases, data browsers, predictive alerts, update checking, or multi-account mode unless a new spec explicitly asks for it.
+Do not reintroduce account login, web login, subscription selection, network latency monitoring, GPS tracking, maps, quality databases, data browsers, predictive alerts, or multi-account mode unless a new spec explicitly asks for it.

@@ -16,7 +16,10 @@ struct UsageMonitorApp: App {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let settingsWindowController = SettingsWindowController()
+    private let backgroundUpdateCoordinator = BackgroundUpdateCoordinator()
+    private lazy var settingsWindowController = SettingsWindowController(
+        backgroundUpdateCoordinator: backgroundUpdateCoordinator
+    )
     private var monitor: UsageSnapshotMonitor?
     private var serviceStatusMonitor: ServiceStatusMonitor?
     private var statusBarController: StatusBarController?
@@ -33,5 +36,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             serviceStatusMonitor: serviceStatusMonitor,
             settingsWindowController: settingsWindowController
         )
+        backgroundUpdateCoordinator.start()
     }
 }
