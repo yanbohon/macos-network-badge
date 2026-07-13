@@ -759,8 +759,9 @@ final class UsageSnapshotMonitor: ObservableObject {
         }
 
         refreshTimer = timerFactory.schedule(interval: TimeInterval(refreshIntervalSeconds)) { [weak self] in
+            guard let monitor = self else { return }
             Task { @MainActor in
-                await self?.refreshFromTimer()
+                await monitor.refreshFromTimer()
             }
         }
     }

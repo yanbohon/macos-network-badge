@@ -178,8 +178,9 @@ final class ServiceStatusMonitor: ObservableObject {
     private func scheduleTimer() {
         refreshTimer?.invalidate()
         refreshTimer = timerFactory.schedule(interval: Self.refreshInterval) { [weak self] in
+            guard let monitor = self else { return }
             Task { @MainActor in
-                await self?.refreshFromTimer()
+                await monitor.refreshFromTimer()
             }
         }
     }
