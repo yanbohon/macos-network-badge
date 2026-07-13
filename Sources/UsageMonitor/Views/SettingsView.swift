@@ -3,7 +3,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var monitor: UsageSnapshotMonitor
-    private let updateChecker: UpdateChecker
+    private let backgroundUpdateCoordinator: BackgroundUpdateCoordinator
     @State private var draft: SettingsDraft
     @State private var connectionStatus: ConnectionStatus = .idle
     @State private var updateCheckResult: UpdateCheckResult?
@@ -13,10 +13,10 @@ struct SettingsView: View {
 
     init(
         monitor: UsageSnapshotMonitor,
-        updateChecker: UpdateChecker = UpdateChecker()
+        backgroundUpdateCoordinator: BackgroundUpdateCoordinator
     ) {
         self.monitor = monitor
-        self.updateChecker = updateChecker
+        self.backgroundUpdateCoordinator = backgroundUpdateCoordinator
         _draft = State(initialValue: Self.makeDraft(from: monitor))
         _selectedKeyID = State(initialValue: monitor.usageKeys.first?.id)
     }
@@ -547,13 +547,11 @@ struct SettingsView: View {
         isCheckingForUpdate = true
 
         Task {
-            let result = await updateChecker.checkForUpdate()
+            let outcome = await backgroundUpdateCoordinator.checkManually()
             await MainActor.run {
                 isCheckingForUpdate = false
-                updateCheckResult = result
-                if case let .updateAvailable(info) = result {
-                    updateAlertInfo = info
-                }
+                updateCheckResult = outcome.result
+                updateAlertInfo = outcome.alertInfo
             }
         }
     }

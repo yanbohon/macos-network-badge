@@ -139,8 +139,75 @@ final class BackgroundUpdateCoordinatorTests: XCTestCase {
         XCTAssertEqual(timers.scheduledIntervals, [BackgroundUpdateCoordinator.dueCheckInterval])
     }
 
+    func testBackgroundAndManualChecksShareRequestAndPresentResultOnce() async {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let defaults = makeDefaults()
+        let provider = BlockingReleaseProvider(releases: [release(tag: "v1.1.0")])
+        let presenter = RecordingUpdateAlertPresenter()
+        let coordinator = makeCoordinator(
+            provider: provider,
+            defaults: defaults,
+            presenter: presenter,
+            now: now
+        )
+
+        let backgroundTask = Task {
+            await coordinator.checkIfDue()
+        }
+        await provider.waitUntilFirstRequest()
+        let manualTask = Task {
+            await coordinator.checkManually()
+        }
+        for _ in 0..<10 {
+            await Task.yield()
+        }
+        await provider.resumeFirstRequest()
+
+        let manualOutcome = await manualTask.value
+        await backgroundTask.value
+        let requestCount = await provider.requestCount()
+        let presentationCount = presenter.presentedVersions.count + (manualOutcome.alertInfo == nil ? 0 : 1)
+
+        XCTAssertEqual(requestCount, 1)
+        XCTAssertEqual(manualOutcome.result.statusText, "发现新版本 v1.1.0")
+        XCTAssertEqual(presentationCount, 1)
+    }
+
+    func testSystemAlertDownloadButtonOpensReleaseURL() {
+        let info = releaseInfo(tag: "v1.1.0")
+        var activated = false
+        var openedURL: URL?
+        let presenter = SystemUpdateAlertPresenter(
+            openURL: { openedURL = $0 },
+            activateApplication: { activated = true },
+            runAlert: { alert in
+                XCTAssertEqual(alert.buttons.map(\.title), ["下载更新", "稍后"])
+                return .alertFirstButtonReturn
+            }
+        )
+
+        presenter.presentUpdate(info)
+
+        XCTAssertTrue(activated)
+        XCTAssertEqual(openedURL, info.releaseURL)
+    }
+
+    func testSystemAlertLaterButtonDoesNotOpenReleaseURL() {
+        let info = releaseInfo(tag: "v1.1.0")
+        var openedURL: URL?
+        let presenter = SystemUpdateAlertPresenter(
+            openURL: { openedURL = $0 },
+            activateApplication: {},
+            runAlert: { _ in .alertSecondButtonReturn }
+        )
+
+        presenter.presentUpdate(info)
+
+        XCTAssertNil(openedURL)
+    }
+
     private func makeCoordinator(
-        provider: RecordingReleaseProvider,
+        provider: GitHubReleaseProviding,
         defaults: UserDefaults,
         presenter: RecordingUpdateAlertPresenter,
         now: Date
@@ -173,6 +240,16 @@ final class BackgroundUpdateCoordinatorTests: XCTestCase {
             assets: []
         )
     }
+
+    private func releaseInfo(tag: String) -> UpdateReleaseInfo {
+        UpdateReleaseInfo(
+            version: AppVersion.parse(tag)!,
+            publishedAt: Date(timeIntervalSince1970: 1_725_000_000),
+            releaseURL: URL(
+                string: "https://github.com/yanbohon/macos-network-badge/releases/tag/\(tag)"
+            )!
+        )
+    }
 }
 
 private final class RecordingReleaseProvider: GitHubReleaseProviding {
@@ -191,6 +268,39 @@ private final class RecordingReleaseProvider: GitHubReleaseProviding {
             throw error
         }
         return releases
+    }
+}
+
+private actor BlockingReleaseProvider: GitHubReleaseProviding {
+    private let releases: [GitHubRelease]
+    private var fetchCount = 0
+    private var firstRequestContinuation: CheckedContinuation<[GitHubRelease], Error>?
+
+    init(releases: [GitHubRelease]) {
+        self.releases = releases
+    }
+
+    func fetchReleases() async throws -> [GitHubRelease] {
+        fetchCount += 1
+        guard fetchCount == 1 else { return releases }
+        return try await withCheckedThrowingContinuation { continuation in
+            firstRequestContinuation = continuation
+        }
+    }
+
+    func waitUntilFirstRequest() async {
+        while fetchCount == 0 {
+            await Task.yield()
+        }
+    }
+
+    func resumeFirstRequest() {
+        firstRequestContinuation?.resume(returning: releases)
+        firstRequestContinuation = nil
+    }
+
+    func requestCount() -> Int {
+        fetchCount
     }
 }
 

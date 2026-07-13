@@ -9,11 +9,23 @@ protocol UpdateAlertPresenting {
 @MainActor
 struct SystemUpdateAlertPresenter: UpdateAlertPresenting {
     private let openURL: (URL) -> Void
+    private let activateApplication: () -> Void
+    private let runAlert: (NSAlert) -> NSApplication.ModalResponse
 
-    init(openURL: @escaping (URL) -> Void = { url in
-        NSWorkspace.shared.open(url)
-    }) {
-        self.openURL = openURL
+    init(
+        openURL: ((URL) -> Void)? = nil,
+        activateApplication: (() -> Void)? = nil,
+        runAlert: ((NSAlert) -> NSApplication.ModalResponse)? = nil
+    ) {
+        self.openURL = openURL ?? { url in
+            NSWorkspace.shared.open(url)
+        }
+        self.activateApplication = activateApplication ?? {
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        self.runAlert = runAlert ?? { alert in
+            alert.runModal()
+        }
     }
 
     func presentUpdate(_ info: UpdateReleaseInfo) {
@@ -24,14 +36,29 @@ struct SystemUpdateAlertPresenter: UpdateAlertPresenting {
         alert.addButton(withTitle: "下载更新")
         alert.addButton(withTitle: "稍后")
 
-        NSApp.activate(ignoringOtherApps: true)
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        activateApplication()
+        guard runAlert(alert) == .alertFirstButtonReturn else { return }
         openURL(info.releaseURL)
     }
 }
 
+struct ManualUpdateCheckOutcome: Equatable {
+    let result: UpdateCheckResult
+    let alertInfo: UpdateReleaseInfo?
+}
+
 @MainActor
 final class BackgroundUpdateCoordinator {
+    private struct ActiveUpdateCheck {
+        let id: UUID
+        let task: Task<UpdateCheckResult, Never>
+    }
+
+    private struct SharedUpdateCheckOutcome {
+        let id: UUID
+        let result: UpdateCheckResult
+    }
+
     enum DefaultsKey {
         static let lastCheckDate = "updates.lastBackgroundCheckDate"
         static let lastPromptedVersion = "updates.lastPromptedVersion"
@@ -50,7 +77,8 @@ final class BackgroundUpdateCoordinator {
 
     private var dueCheckTimer: RefreshTimer?
     private var hasStarted = false
-    private var isChecking = false
+    private var activeUpdateCheck: ActiveUpdateCheck?
+    private var presentedCheckID: UUID?
 
     init(
         updateChecker: UpdateChecker = UpdateChecker(),
@@ -82,22 +110,71 @@ final class BackgroundUpdateCoordinator {
     }
 
     func checkIfDue() async {
-        guard !isChecking else { return }
-
         let checkDate = now()
         guard isCheckDue(at: checkDate) else { return }
 
-        isChecking = true
         userDefaults.set(checkDate, forKey: DefaultsKey.lastCheckDate)
-        defer { isChecking = false }
-
-        let result = await updateChecker.checkForUpdate()
-        guard case let .updateAvailable(info) = result else { return }
-        guard shouldPresent(info, at: checkDate) else { return }
-
-        userDefaults.set(info.versionText, forKey: DefaultsKey.lastPromptedVersion)
-        userDefaults.set(checkDate, forKey: DefaultsKey.lastPromptDate)
+        let outcome = await performUpdateCheck()
+        guard case let .updateAvailable(info) = outcome.result else { return }
+        guard claimPresentation(for: info, from: outcome.id, at: checkDate, respectReminder: true) else {
+            return
+        }
         alertPresenter.presentUpdate(info)
+    }
+
+    func checkManually() async -> ManualUpdateCheckOutcome {
+        let checkDate = now()
+        userDefaults.set(checkDate, forKey: DefaultsKey.lastCheckDate)
+
+        let outcome = await performUpdateCheck()
+        guard case let .updateAvailable(info) = outcome.result else {
+            return ManualUpdateCheckOutcome(result: outcome.result, alertInfo: nil)
+        }
+
+        let alertInfo = claimPresentation(
+            for: info,
+            from: outcome.id,
+            at: checkDate,
+            respectReminder: false
+        ) ? info : nil
+        return ManualUpdateCheckOutcome(result: outcome.result, alertInfo: alertInfo)
+    }
+
+    private func performUpdateCheck() async -> SharedUpdateCheckOutcome {
+        if let activeUpdateCheck {
+            return SharedUpdateCheckOutcome(
+                id: activeUpdateCheck.id,
+                result: await activeUpdateCheck.task.value
+            )
+        }
+
+        let id = UUID()
+        let task = Task { [updateChecker] in
+            await updateChecker.checkForUpdate()
+        }
+        activeUpdateCheck = ActiveUpdateCheck(id: id, task: task)
+        let result = await task.value
+        if activeUpdateCheck?.id == id {
+            activeUpdateCheck = nil
+        }
+        return SharedUpdateCheckOutcome(id: id, result: result)
+    }
+
+    private func claimPresentation(
+        for info: UpdateReleaseInfo,
+        from checkID: UUID,
+        at date: Date,
+        respectReminder: Bool
+    ) -> Bool {
+        guard presentedCheckID != checkID else { return false }
+        if respectReminder, !shouldPresent(info, at: date) {
+            return false
+        }
+
+        presentedCheckID = checkID
+        userDefaults.set(info.versionText, forKey: DefaultsKey.lastPromptedVersion)
+        userDefaults.set(date, forKey: DefaultsKey.lastPromptDate)
+        return true
     }
 
     private func isCheckDue(at date: Date) -> Bool {

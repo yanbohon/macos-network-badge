@@ -163,7 +163,7 @@ The app should not crash or clear settings when update checks fail.
 
 Background failures should remain silent and count as an attempt for the 24-hour rate limit.
 
-If multiple checks are triggered quickly, only one check should be active at a time. The UI button disabled state is enough for the first version.
+If background and manual checks overlap, the coordinator should share one in-flight request and allow only one alert for its result. The manual UI button remains disabled while its caller awaits that shared result.
 
 ## Testing
 

@@ -1,17 +1,23 @@
 import AppKit
 import SwiftUI
 
+@MainActor
 final class SettingsWindowController: ObservableObject {
     static let initialContentSize = NSSize(width: 500, height: 560)
     static let minimumContentSize = NSSize(width: 420, height: 400)
 
     private var window: NSWindow?
+    private let backgroundUpdateCoordinator: BackgroundUpdateCoordinator
     private let activateApplication: () -> Void
 
-    init(activateApplication: @escaping () -> Void = {
-        NSApp.activate(ignoringOtherApps: true)
-    }) {
-        self.activateApplication = activateApplication
+    init(
+        backgroundUpdateCoordinator: BackgroundUpdateCoordinator? = nil,
+        activateApplication: (() -> Void)? = nil
+    ) {
+        self.backgroundUpdateCoordinator = backgroundUpdateCoordinator ?? BackgroundUpdateCoordinator()
+        self.activateApplication = activateApplication ?? {
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
 
     func showWindow(monitor: UsageSnapshotMonitor) {
@@ -26,7 +32,10 @@ final class SettingsWindowController: ObservableObject {
     }
 
     func makeWindow(monitor: UsageSnapshotMonitor) -> NSWindow {
-        let view = SettingsView(monitor: monitor)
+        let view = SettingsView(
+            monitor: monitor,
+            backgroundUpdateCoordinator: backgroundUpdateCoordinator
+        )
         let hostingController = NSHostingController(rootView: view)
         let newWindow = NSWindow(
             contentRect: NSRect(origin: .zero, size: Self.initialContentSize),
