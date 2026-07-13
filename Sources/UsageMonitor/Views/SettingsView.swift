@@ -3,6 +3,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var monitor: UsageSnapshotMonitor
+    @ObservedObject var serviceStatusMonitor: ServiceStatusMonitor
     private let backgroundUpdateCoordinator: BackgroundUpdateCoordinator
     @State private var draft: SettingsDraft
     @State private var connectionStatus: ConnectionStatus = .idle
@@ -13,9 +14,11 @@ struct SettingsView: View {
 
     init(
         monitor: UsageSnapshotMonitor,
+        serviceStatusMonitor: ServiceStatusMonitor,
         backgroundUpdateCoordinator: BackgroundUpdateCoordinator
     ) {
         self.monitor = monitor
+        self.serviceStatusMonitor = serviceStatusMonitor
         self.backgroundUpdateCoordinator = backgroundUpdateCoordinator
         _draft = State(initialValue: Self.makeDraft(from: monitor))
         _selectedKeyID = State(initialValue: monitor.usageKeys.first?.id)
@@ -141,6 +144,18 @@ struct SettingsView: View {
 
             Toggle("菜单栏显示小数点", isOn: $monitor.showMenuBarDecimals)
             Toggle("菜单栏隐藏 SF Symbol", isOn: $monitor.hideMenuBarSymbols)
+
+            HStack(alignment: .firstTextBaseline) {
+                Text("菜单栏服务状态")
+                Spacer(minLength: 12)
+                Picker("菜单栏服务状态", selection: $serviceStatusMonitor.menuBarModel) {
+                    ForEach(ServiceStatusMonitor.supportedModels) { model in
+                        Text(model.rawValue).tag(model)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+            }
         }
     }
 

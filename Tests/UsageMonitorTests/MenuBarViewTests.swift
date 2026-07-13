@@ -24,6 +24,18 @@ final class MenuBarViewTests: XCTestCase {
         XCTAssertTrue(source.contains("Base URL"))
     }
 
+    func testPopoverDefaultsToGPT56SolAndDisclosesRemainingModels() throws {
+        let source = try menuBarViewSource()
+
+        XCTAssertTrue(source.contains("@State private var showsAllServiceStatuses = false"))
+        XCTAssertTrue(source.contains("serviceStatusMonitor.timelineRows.first"))
+        XCTAssertTrue(source.contains("serviceStatusMonitor.timelineRows.dropFirst()"))
+        XCTAssertTrue(source.contains("if showsAllServiceStatuses"))
+        XCTAssertTrue(source.contains("chevron.up"))
+        XCTAssertTrue(source.contains("chevron.down"))
+        XCTAssertTrue(source.contains("展开其他模型状态"))
+    }
+
     func testPopoverOmitsVerboseUsageDetailsAndDuplicateKeyRefreshStatus() throws {
         let source = try menuBarViewSource()
 
@@ -70,6 +82,14 @@ final class MenuBarViewTests: XCTestCase {
 
         XCTAssertTrue(source.contains("菜单栏隐藏 SF Symbol"))
         XCTAssertTrue(source.contains("$monitor.hideMenuBarSymbols"))
+    }
+
+    func testSettingsExposesMenuBarServiceStatusPicker() throws {
+        let source = try settingsViewSource()
+
+        XCTAssertTrue(source.contains("菜单栏服务状态"))
+        XCTAssertTrue(source.contains("$serviceStatusMonitor.menuBarModel"))
+        XCTAssertTrue(source.contains("ServiceStatusMonitor.supportedModels"))
     }
 
     func testSettingsExposesPerKeyMenuBarAndSymbolColorControls() throws {

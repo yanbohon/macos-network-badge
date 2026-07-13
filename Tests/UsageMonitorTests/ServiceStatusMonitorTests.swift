@@ -11,12 +11,49 @@ final class ServiceStatusMonitorTests: XCTestCase {
         )
     }
 
+    func testMenuBarModelDefaultsToGPT56Sol() {
+        let monitor = ServiceStatusMonitor(
+            userDefaults: Self.makeDefaults(),
+            timerFactory: ManualTimerFactory()
+        )
+
+        XCTAssertEqual(monitor.menuBarModel, .gpt56Sol)
+    }
+
+    func testMenuBarModelSelectionControlsCellsAndPersists() async {
+        let defaults = Self.makeDefaults()
+        let monitor = ServiceStatusMonitor(
+            userDefaults: defaults,
+            client: StubServiceStatusClient(results: [.success(Self.statusResult())]),
+            timerFactory: ManualTimerFactory()
+        )
+        await monitor.refreshNow()
+
+        XCTAssertEqual(monitor.selectedService?.model, "gpt-5.6-sol")
+        XCTAssertEqual(monitor.displayCells.last?.kind, .red)
+
+        monitor.menuBarModel = .gpt56Terra
+
+        XCTAssertEqual(monitor.selectedService?.model, "gpt-5.6-terra")
+        XCTAssertEqual(monitor.displayCells.last?.kind, .green)
+
+        let restoredMonitor = ServiceStatusMonitor(
+            userDefaults: defaults,
+            timerFactory: ManualTimerFactory()
+        )
+        XCTAssertEqual(restoredMonitor.menuBarModel, .gpt56Terra)
+    }
+
     func testStartSchedulesOneMinuteTimerAndRefreshesOnce() async throws {
         let client = StubServiceStatusClient(results: [
             .success(Self.statusResult()),
         ])
         let timers = ManualTimerFactory()
-        let monitor = ServiceStatusMonitor(client: client, timerFactory: timers)
+        let monitor = ServiceStatusMonitor(
+            userDefaults: Self.makeDefaults(),
+            client: client,
+            timerFactory: timers
+        )
 
         monitor.start()
         monitor.start()
@@ -28,7 +65,7 @@ final class ServiceStatusMonitorTests: XCTestCase {
         XCTAssertEqual(timers.scheduledIntervals, [60])
         let fetchCount = await client.fetchCount()
         XCTAssertEqual(fetchCount, 1)
-        XCTAssertEqual(monitor.selectedService?.model, "gpt-5.5")
+        XCTAssertEqual(monitor.selectedService?.model, "gpt-5.6-sol")
         XCTAssertNil(monitor.lastError)
     }
 
@@ -38,7 +75,11 @@ final class ServiceStatusMonitorTests: XCTestCase {
             .success(Self.statusResult(generatedAt: 2)),
         ])
         let timers = ManualTimerFactory()
-        let monitor = ServiceStatusMonitor(client: client, timerFactory: timers)
+        let monitor = ServiceStatusMonitor(
+            userDefaults: Self.makeDefaults(),
+            client: client,
+            timerFactory: timers
+        )
 
         monitor.start()
         while monitor.lastSuccessfulRefresh == nil {
@@ -57,7 +98,11 @@ final class ServiceStatusMonitorTests: XCTestCase {
 
     func testConcurrentRefreshesShareSingleRequest() async {
         let client = BlockingServiceStatusClient()
-        let monitor = ServiceStatusMonitor(client: client, timerFactory: ManualTimerFactory())
+        let monitor = ServiceStatusMonitor(
+            userDefaults: Self.makeDefaults(),
+            client: client,
+            timerFactory: ManualTimerFactory()
+        )
 
         let first = Task { await monitor.refreshNow() }
         let second = Task { await monitor.refreshNow() }
@@ -72,7 +117,7 @@ final class ServiceStatusMonitorTests: XCTestCase {
         await first.value
         await second.value
 
-        XCTAssertEqual(monitor.selectedService?.model, "gpt-5.5")
+        XCTAssertEqual(monitor.selectedService?.model, "gpt-5.6-sol")
         let completedCount = await client.fetchCount()
         XCTAssertEqual(completedCount, 1)
     }
@@ -80,7 +125,11 @@ final class ServiceStatusMonitorTests: XCTestCase {
     func testTimerTicksDoNotAccumulateRefreshWaitersWhileRequestIsInFlight() async {
         let client = BlockingServiceStatusClient()
         let timers = ManualTimerFactory()
-        let monitor = ServiceStatusMonitor(client: client, timerFactory: timers)
+        let monitor = ServiceStatusMonitor(
+            userDefaults: Self.makeDefaults(),
+            client: client,
+            timerFactory: timers
+        )
 
         monitor.start()
         while await client.fetchCount() == 0 {
@@ -106,7 +155,11 @@ final class ServiceStatusMonitorTests: XCTestCase {
             .success(Self.statusResult()),
             .failure(StatusAPIClientError.network("offline")),
         ])
-        let monitor = ServiceStatusMonitor(client: client, timerFactory: ManualTimerFactory())
+        let monitor = ServiceStatusMonitor(
+            userDefaults: Self.makeDefaults(),
+            client: client,
+            timerFactory: ManualTimerFactory()
+        )
 
         await monitor.refreshNow()
         let cells = monitor.displayCells
@@ -118,14 +171,18 @@ final class ServiceStatusMonitorTests: XCTestCase {
         XCTAssertEqual(monitor.rawJSONText, rawJSONText)
         XCTAssertEqual(monitor.lastError, "状态请求失败")
         XCTAssertTrue(monitor.isStaleAfterFailure)
-        XCTAssertEqual(monitor.selectedService?.model, "gpt-5.5")
+        XCTAssertEqual(monitor.selectedService?.model, "gpt-5.6-sol")
     }
 
     func testFailureBeforeAnySuccessKeepsGrayCellsAndReportsError() async throws {
         let client = StubServiceStatusClient(results: [
             .failure(StatusAPIClientError.httpStatus(503, "status unavailable")),
         ])
-        let monitor = ServiceStatusMonitor(client: client, timerFactory: ManualTimerFactory())
+        let monitor = ServiceStatusMonitor(
+            userDefaults: Self.makeDefaults(),
+            client: client,
+            timerFactory: ManualTimerFactory()
+        )
 
         await monitor.refreshNow()
 
@@ -150,12 +207,16 @@ final class ServiceStatusMonitorTests: XCTestCase {
         let client = StubServiceStatusClient(results: [
             .success(result),
         ])
-        let monitor = ServiceStatusMonitor(client: client, timerFactory: ManualTimerFactory())
+        let monitor = ServiceStatusMonitor(
+            userDefaults: Self.makeDefaults(),
+            client: client,
+            timerFactory: ManualTimerFactory()
+        )
 
         await monitor.refreshNow()
 
         XCTAssertNil(monitor.selectedService)
-        XCTAssertEqual(monitor.lastError, "未找到 gpt-5.5 状态")
+        XCTAssertEqual(monitor.lastError, "未找到 gpt-5.6-sol 状态")
         XCTAssertEqual(monitor.displayCells.map(\.kind), Array(repeating: .gray, count: 8))
     }
 
@@ -164,6 +225,24 @@ final class ServiceStatusMonitorTests: XCTestCase {
             allOK: true,
             generatedAt: generatedAt,
             services: [
+                ServiceStatusService(
+                    model: "gpt-5.6-sol",
+                    uptimePct: 99.9,
+                    last: ServiceStatusProbe(ts: 9, ok: false, latencyMS: nil, error: "timeout"),
+                    history: [
+                        ServiceStatusProbe(ts: 1, ok: true, latencyMS: 100, error: nil),
+                        ServiceStatusProbe(ts: 2, ok: true, latencyMS: 3_000, error: nil),
+                        ServiceStatusProbe(ts: 3, ok: false, latencyMS: nil, error: "timeout"),
+                    ]
+                ),
+                ServiceStatusService(
+                    model: "gpt-5.6-terra",
+                    uptimePct: 100,
+                    last: ServiceStatusProbe(ts: 9, ok: true, latencyMS: 900, error: nil),
+                    history: [
+                        ServiceStatusProbe(ts: 9, ok: true, latencyMS: 900, error: nil),
+                    ]
+                ),
                 ServiceStatusService(
                     model: "gpt-5.5",
                     uptimePct: 99.5,
@@ -177,6 +256,10 @@ final class ServiceStatusMonitorTests: XCTestCase {
             ]
         )
         return StatusAPIResult(response: response, prettyRawJSON: #"{"all_ok":true}"#)
+    }
+
+    private static func makeDefaults() -> UserDefaults {
+        UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!
     }
 }
 

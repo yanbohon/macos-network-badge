@@ -308,6 +308,7 @@ final class StatusBarControllerTests: XCTestCase {
             timerFactory: ManualTimerFactory()
         )
         let serviceMonitor = ServiceStatusMonitor(
+            userDefaults: UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!,
             client: StubServiceStatusClient(results: [
                 .success(Self.statusResult()),
             ]),
@@ -340,6 +341,39 @@ final class StatusBarControllerTests: XCTestCase {
 
         let updatedImageDescription = try XCTUnwrap(firstSymbolImageDescription(in: button))
         XCTAssertTrue(updatedImageDescription.contains("symbol = star.fill"))
+    }
+
+    func testStatusBarControllerUsesSelectedServiceModel() async throws {
+        let defaults = UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!
+        let usageMonitor = UsageSnapshotMonitor(
+            userDefaults: defaults,
+            client: Sub2APIClient(requestLoader: RequestRecordingLoader()),
+            timerFactory: ManualTimerFactory()
+        )
+        let serviceMonitor = ServiceStatusMonitor(
+            userDefaults: defaults,
+            client: StubServiceStatusClient(results: [.success(Self.statusResult())]),
+            timerFactory: ManualTimerFactory()
+        )
+        let controller = StatusBarController(
+            usageMonitor: usageMonitor,
+            serviceStatusMonitor: serviceMonitor,
+            settingsWindowController: SettingsWindowController(activateApplication: {}),
+            statusBar: .system
+        )
+
+        while serviceMonitor.lastSuccessfulRefresh == nil {
+            await Task.yield()
+        }
+        await Task.yield()
+
+        let button = try statusItemButton(from: controller)
+        XCTAssertTrue(try XCTUnwrap(button.accessibilityTitle()).contains("服务状态正常"))
+
+        serviceMonitor.menuBarModel = .gpt55
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertTrue(try XCTUnwrap(button.accessibilityTitle()).contains("服务状态失败"))
     }
 
     func testVerticalLayoutReservesRoomForStatusStripSpacingAndShortCurrencyText() {
@@ -423,6 +457,14 @@ final class StatusBarControllerTests: XCTestCase {
                 allOK: true,
                 generatedAt: 1_778_762_578,
                 services: [
+                    ServiceStatusService(
+                        model: "gpt-5.6-sol",
+                        uptimePct: 100,
+                        last: ServiceStatusProbe(ts: 9, ok: true, latencyMS: 900, error: nil),
+                        history: [
+                            ServiceStatusProbe(ts: 9, ok: true, latencyMS: 900, error: nil),
+                        ]
+                    ),
                     ServiceStatusService(
                         model: "gpt-5.5",
                         uptimePct: 99.5,

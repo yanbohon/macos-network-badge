@@ -21,6 +21,7 @@ struct MenuBarView: View {
     @ObservedObject var serviceStatusMonitor: ServiceStatusMonitor
     @ObservedObject var settingsWindowController: SettingsWindowController
     @State private var selectedKeyIndex = 0
+    @State private var showsAllServiceStatuses = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -82,7 +83,10 @@ struct MenuBarView: View {
             .help("全部刷新")
 
             Button {
-                settingsWindowController.showWindow(monitor: monitor)
+                settingsWindowController.showWindow(
+                    monitor: monitor,
+                    serviceStatusMonitor: serviceStatusMonitor
+                )
             } label: {
                 Image(systemName: "gearshape")
             }
@@ -193,8 +197,14 @@ struct MenuBarView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            ForEach(serviceStatusMonitor.timelineRows) { row in
-                serviceTimelineRow(row)
+            if let primaryRow = serviceStatusMonitor.timelineRows.first {
+                serviceTimelineRow(primaryRow, showsDisclosure: true)
+            }
+
+            if showsAllServiceStatuses {
+                ForEach(Array(serviceStatusMonitor.timelineRows.dropFirst())) { row in
+                    serviceTimelineRow(row)
+                }
             }
 
             serviceStatusFooter
@@ -202,7 +212,10 @@ struct MenuBarView: View {
         .padding(.vertical, 2)
     }
 
-    private func serviceTimelineRow(_ row: ServiceStatusTimelineRow) -> some View {
+    private func serviceTimelineRow(
+        _ row: ServiceStatusTimelineRow,
+        showsDisclosure: Bool = false
+    ) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 7) {
                 Text(row.model)
@@ -215,6 +228,22 @@ struct MenuBarView: View {
                 Text(row.statusText)
                     .font(.caption.monospaced())
                     .foregroundColor(statusColor(for: row.latestKind))
+                if showsDisclosure {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            showsAllServiceStatuses.toggle()
+                        }
+                    } label: {
+                        Image(systemName: showsAllServiceStatuses ? "chevron.up" : "chevron.down")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 14, height: 14)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(showsAllServiceStatuses ? "收起其他模型状态" : "展开其他模型状态")
+                    .accessibilityLabel(showsAllServiceStatuses ? "收起其他模型状态" : "展开其他模型状态")
+                }
                 Spacer()
             }
 

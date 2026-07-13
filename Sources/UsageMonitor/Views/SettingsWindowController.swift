@@ -20,20 +20,30 @@ final class SettingsWindowController: ObservableObject {
         }
     }
 
-    func showWindow(monitor: UsageSnapshotMonitor) {
+    func showWindow(
+        monitor: UsageSnapshotMonitor,
+        serviceStatusMonitor: ServiceStatusMonitor
+    ) {
         if let window {
             bringToFront(window)
             return
         }
 
-        let newWindow = makeWindow(monitor: monitor)
+        let newWindow = makeWindow(
+            monitor: monitor,
+            serviceStatusMonitor: serviceStatusMonitor
+        )
         bringToFront(newWindow)
         window = newWindow
     }
 
-    func makeWindow(monitor: UsageSnapshotMonitor) -> NSWindow {
+    func makeWindow(
+        monitor: UsageSnapshotMonitor,
+        serviceStatusMonitor: ServiceStatusMonitor
+    ) -> NSWindow {
         let view = SettingsView(
             monitor: monitor,
+            serviceStatusMonitor: serviceStatusMonitor,
             backgroundUpdateCoordinator: backgroundUpdateCoordinator
         )
         let hostingController = NSHostingController(rootView: view)
