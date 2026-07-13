@@ -14,12 +14,6 @@ on:
         required: false
         type: boolean
         default: false
-      prerelease:
-        description: "Mark as pre-release"
-        required: false
-        type: boolean
-        default: false
-
 permissions:
   contents: write
   pull-requests: write
@@ -30,7 +24,7 @@ concurrency:
 
 jobs:
   release:
-    name: Build & Release
+    name: Build arm64 DMG & Release
     runs-on: macos-14
     steps:
       - name: Checkout
@@ -46,7 +40,7 @@ jobs:
           else
             VERSION="${GITHUB_REF#refs/heads/release/v}"
           fi
-          if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$'; then
+          if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "::error::Invalid version format: $VERSION (expected semver like 1.2.3)"
             exit 1
           fi
@@ -75,21 +69,33 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Resources/Info.plist
-          git commit -m "Stamp version ${{ steps.version.outputs.version }} (build ${{ github.run_number }})"
+          git commit -m "Stamp version ${{ steps.version.outputs.version }} (build ${{ github.run_number }}) [skip ci]"
 
       - name: Cache Swift build
         uses: actions/cache@v4
         with:
           path: .build
-          key: swift-release-${{ runner.os }}-${{ hashFiles('Package.swift', 'Package.resolved', 'Sources/**/*.swift') }}
+          key: swift-release-arm64-${{ runner.os }}-${{ hashFiles('Package.swift', 'Package.resolved', 'Sources/**/*.swift') }}
           restore-keys: |
-            swift-release-${{ runner.os }}-
+            swift-release-arm64-${{ runner.os }}-
 
       - name: Run tests
         run: swift test
 
       - name: Build .app bundle
+        env:
+          BUILD_ARCH: arm64
         run: ./scripts/build-app.sh
+
+      - name: Verify arm64 application
+        run: |
+          BINARY="build/UsageMonitor.app/Contents/MacOS/UsageMonitor"
+          ARCHITECTURES="$(lipo -archs "$BINARY")"
+          if [ "$ARCHITECTURES" != "arm64" ]; then
+            echo "::error::Expected arm64 binary, found: $ARCHITECTURES"
+            exit 1
+          fi
+          file "$BINARY"
 
       - name: Create DMG
         run: ./scripts/create-dmg.sh
@@ -106,7 +112,7 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: UsageMonitor-${{ steps.version.outputs.tag }}
+          name: UsageMonitor-${{ steps.version.outputs.tag }}-arm64
           path: |
             build/UsageMonitor.dmg
             build/UsageMonitor.dmg.sha256
@@ -118,22 +124,14 @@ jobs:
           git tag "${{ steps.version.outputs.tag }}"
           git push origin "${{ steps.version.outputs.tag }}"
 
-      - name: Determine release flags
+      - name: Determine draft flag
         id: flags
         run: |
-          PRERELEASE=false
-          if echo "${{ steps.version.outputs.version }}" | grep -q -- '-'; then
-            PRERELEASE=true
-          fi
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.prerelease }}" = "true" ]; then
-            PRERELEASE=true
-          fi
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "draft=${{ github.event.inputs.draft }}" >> "$GITHUB_OUTPUT"
           else
             echo "draft=false" >> "$GITHUB_OUTPUT"
           fi
-          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -141,12 +139,12 @@ jobs:
           tag_name: ${{ steps.version.outputs.tag }}
           name: 用量监控 ${{ steps.version.outputs.tag }}
           draft: ${{ steps.flags.outputs.draft }}
-          prerelease: ${{ steps.flags.outputs.prerelease }}
+          prerelease: false
           generate_release_notes: true
           body: |
             ## Installation
 
-            Download `UsageMonitor.dmg`, open it, and drag 用量监控 to Applications.
+            Download the Apple silicon (`arm64`) `UsageMonitor.dmg`, open it, and drag 用量监控 to Applications.
 
             ## Verify download
 

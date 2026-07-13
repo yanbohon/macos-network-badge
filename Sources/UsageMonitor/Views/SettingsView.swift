@@ -3,28 +3,22 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var monitor: UsageSnapshotMonitor
-    private let updateDefaults: UserDefaults
     private let updateChecker: UpdateChecker
     @State private var draft: SettingsDraft
     @State private var connectionStatus: ConnectionStatus = .idle
-    @State private var includeBetaUpdates: Bool
     @State private var updateCheckResult: UpdateCheckResult?
+    @State private var updateAlertInfo: UpdateReleaseInfo?
     @State private var isCheckingForUpdate = false
-    @State private var updateCheckGeneration = 0
     @State private var selectedKeyID: String?
 
     init(
         monitor: UsageSnapshotMonitor,
-        updateDefaults: UserDefaults = .standard,
         updateChecker: UpdateChecker = UpdateChecker()
     ) {
         self.monitor = monitor
-        self.updateDefaults = updateDefaults
         self.updateChecker = updateChecker
         _draft = State(initialValue: Self.makeDraft(from: monitor))
         _selectedKeyID = State(initialValue: monitor.usageKeys.first?.id)
-        let savedIncludeBetaUpdates = updateDefaults.object(forKey: UpdateDefaultsKey.includeBetaUpdates) as? Bool ?? false
-        _includeBetaUpdates = State(initialValue: savedIncludeBetaUpdates)
     }
 
     var body: some View {
@@ -54,10 +48,15 @@ struct SettingsView: View {
             clearConnectionStatus()
             commitDraft()
         }
-        .onChange(of: includeBetaUpdates) { newValue in
-            updateDefaults.set(newValue, forKey: UpdateDefaultsKey.includeBetaUpdates)
-            updateCheckGeneration += 1
-            updateCheckResult = nil
+        .alert(item: $updateAlertInfo) { info in
+            Alert(
+                title: Text("发现新版本 \(info.versionText)"),
+                message: Text("是否前往 GitHub 发布页面查看并下载更新？"),
+                primaryButton: .default(Text("前往 GitHub")) {
+                    NSWorkspace.shared.open(info.releaseURL)
+                },
+                secondaryButton: .cancel(Text("稍后"))
+            )
         }
     }
 
@@ -240,8 +239,6 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Toggle("包含测试版更新", isOn: $includeBetaUpdates)
-
             Button {
                 startUpdateCheck()
             } label: {
@@ -257,11 +254,11 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            if let downloadURL = updateCheckResult?.downloadURL {
+            if let releaseURL = updateCheckResult?.releaseURL {
                 Button {
-                    NSWorkspace.shared.open(downloadURL)
+                    NSWorkspace.shared.open(releaseURL)
                 } label: {
-                    Label("下载更新", systemImage: "square.and.arrow.down")
+                    Label("前往发布页面", systemImage: "arrow.up.right.square")
                 }
                 .buttonStyle(.borderedProminent)
             }
@@ -546,21 +543,17 @@ struct SettingsView: View {
     }
 
     private func startUpdateCheck() {
-        updateCheckGeneration += 1
-        let requestGeneration = updateCheckGeneration
-        let includePrereleases = includeBetaUpdates
         updateCheckResult = nil
         isCheckingForUpdate = true
 
         Task {
-            let result = await updateChecker.checkForUpdate(includePrereleases: includePrereleases)
+            let result = await updateChecker.checkForUpdate()
             await MainActor.run {
-                guard requestGeneration == updateCheckGeneration else {
-                    isCheckingForUpdate = false
-                    return
-                }
                 isCheckingForUpdate = false
                 updateCheckResult = result
+                if case let .updateAvailable(info) = result {
+                    updateAlertInfo = info
+                }
             }
         }
     }
@@ -583,10 +576,6 @@ struct SettingsView: View {
         }
         return version.hasPrefix("v") ? version : "v\(version)"
     }
-}
-
-private enum UpdateDefaultsKey {
-    static let includeBetaUpdates = "githubRelease.includeBetaUpdates"
 }
 
 private enum ConnectionStatus: Equatable {

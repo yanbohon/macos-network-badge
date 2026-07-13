@@ -13,7 +13,7 @@ enum ServiceStatusMonitorError: Error, Equatable {
 
 @MainActor
 final class ServiceStatusMonitor: ObservableObject {
-    static let monitoredModels = ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"]
+    static let monitoredModels = ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5"]
     static let targetModel = "gpt-5.5"
     static let popoverTimelineCellCount = 60
     static let refreshInterval: TimeInterval = 60

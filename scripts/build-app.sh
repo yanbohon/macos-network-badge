@@ -10,6 +10,7 @@
 #
 # Usage:
 #   ./scripts/build-app.sh
+#   BUILD_ARCH=arm64 ./scripts/build-app.sh
 #
 # Output:
 #   build/UsageMonitor.app
@@ -28,20 +29,24 @@ echo -e "${GREEN}=== Building 用量监控 ===${NC}"
 # ── Step 1: Compile ──────────────────────────────────────
 if [ "${DEBUG:-}" = "1" ]; then
     BUILD_CONFIG="debug"
-    echo -e "${YELLOW}Compiling Swift code (debug mode)...${NC}"
-    swift build -c debug
 else
     BUILD_CONFIG="release"
-    echo -e "${YELLOW}Compiling Swift code (release mode)...${NC}"
-    swift build -c release
 fi
 
-# Find the compiled binary
-# Swift Package Manager puts it in .build/<config>/
-BINARY_PATH=".build/$BUILD_CONFIG/UsageMonitor"
+BUILD_ARGS=(-c "$BUILD_CONFIG")
+if [ -n "${BUILD_ARCH:-}" ]; then
+    BUILD_ARGS+=(--arch "$BUILD_ARCH")
+fi
+
+echo -e "${YELLOW}Compiling Swift code ($BUILD_CONFIG, ${BUILD_ARCH:-native} architecture)...${NC}"
+swift build "${BUILD_ARGS[@]}"
+
+# Ask SwiftPM for the architecture-specific output directory.
+BIN_DIR="$(swift build "${BUILD_ARGS[@]}" --show-bin-path)"
+BINARY_PATH="$BIN_DIR/UsageMonitor"
 if [ ! -f "$BINARY_PATH" ]; then
     echo -e "${RED}Error: Binary not found at $BINARY_PATH${NC}"
-    echo "Make sure 'swift build -c release' completed successfully."
+    echo "Make sure the Swift build completed successfully."
     exit 1
 fi
 

@@ -115,7 +115,7 @@ final class ServiceStatusModelsTests: XCTestCase {
             generatedAt: 1,
             services: [
                 ServiceStatusService(
-                    model: "gpt-5.4-mini",
+                    model: "gpt-5.6-luna",
                     uptimePct: 65,
                     last: ServiceStatusProbe(ts: 4, ok: true, latencyMS: 2_000, error: nil),
                     history: [
@@ -136,18 +136,22 @@ final class ServiceStatusModelsTests: XCTestCase {
         )
 
         let rows = response.timelineRows(
-            for: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"],
+            for: ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5"],
             count: 60
         )
 
-        XCTAssertEqual(rows.map(\.model), ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"])
-        XCTAssertEqual(rows.map(\.cells.count), [60, 60, 60])
-        XCTAssertEqual(rows.map(\.sampleCount), [1, 0, 3])
-        XCTAssertEqual(rows.map(\.samplesText), ["1/60", "0/60", "3/60"])
-        XCTAssertEqual(rows.map(\.statusText), ["在线", "缺少数据", "在线"])
-        XCTAssertEqual(rows[0].cells.suffix(1).map(\.kind), [.green])
+        XCTAssertEqual(
+            rows.map(\.model),
+            ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5"]
+        )
+        XCTAssertEqual(rows.map(\.cells.count), [60, 60, 60, 60])
+        XCTAssertEqual(rows.map(\.sampleCount), [0, 0, 3, 1])
+        XCTAssertEqual(rows.map(\.samplesText), ["0/60", "0/60", "3/60", "1/60"])
+        XCTAssertEqual(rows.map(\.statusText), ["缺少数据", "缺少数据", "在线", "在线"])
+        XCTAssertEqual(rows[0].cells.map(\.kind), Array(repeating: .gray, count: 60))
         XCTAssertEqual(rows[1].cells.map(\.kind), Array(repeating: .gray, count: 60))
         XCTAssertEqual(rows[2].cells.suffix(3).map(\.kind), [.red, .yellow, .green])
+        XCTAssertEqual(rows[3].cells.suffix(1).map(\.kind), [.green])
     }
 
     static let sampleStatusJSON = """
