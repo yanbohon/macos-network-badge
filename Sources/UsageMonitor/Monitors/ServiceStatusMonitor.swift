@@ -1,5 +1,14 @@
 import Foundation
 
+enum ServiceStatusModel: String, CaseIterable, Identifiable {
+    case gpt56Sol = "gpt-5.6-sol"
+    case gpt56Terra = "gpt-5.6-terra"
+    case gpt56Luna = "gpt-5.6-luna"
+    case gpt55 = "gpt-5.5"
+
+    var id: String { rawValue }
+}
+
 enum ServiceStatusMonitorError: Error, Equatable {
     case missingModel(String)
 
@@ -13,8 +22,14 @@ enum ServiceStatusMonitorError: Error, Equatable {
 
 @MainActor
 final class ServiceStatusMonitor: ObservableObject {
-    static let monitoredModels = ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5"]
-    static let targetModel = "gpt-5.5"
+    private enum DefaultsKey {
+        static let menuBarModel = "serviceStatus.menuBarModel"
+    }
+
+    static let supportedModels = ServiceStatusModel.allCases
+    static let monitoredModels = supportedModels.map(\.rawValue)
+    static let primaryModel = ServiceStatusModel.gpt56Sol
+    static let defaultMenuBarModel = primaryModel
     static let popoverTimelineCellCount = 60
     static let refreshInterval: TimeInterval = 60
 
@@ -23,7 +38,13 @@ final class ServiceStatusMonitor: ObservableObject {
     @Published private(set) var lastSuccessfulRefresh: Date?
     @Published private(set) var lastError: String?
     @Published private(set) var isRefreshing = false
+    @Published var menuBarModel: ServiceStatusModel {
+        didSet {
+            userDefaults.set(menuBarModel.rawValue, forKey: DefaultsKey.menuBarModel)
+        }
+    }
 
+    private let userDefaults: UserDefaults
     private let client: ServiceStatusFetching
     private let timerFactory: RefreshTimerFactory
     private let now: () -> Date
@@ -35,17 +56,22 @@ final class ServiceStatusMonitor: ObservableObject {
     private var hasStarted = false
 
     init(
+        userDefaults: UserDefaults = .standard,
         client: ServiceStatusFetching = StatusAPIClient(),
         timerFactory: RefreshTimerFactory = FoundationRefreshTimerFactory(),
         now: @escaping () -> Date = Date.init
     ) {
+        self.userDefaults = userDefaults
         self.client = client
         self.timerFactory = timerFactory
         self.now = now
+        menuBarModel = userDefaults.string(forKey: DefaultsKey.menuBarModel)
+            .flatMap(ServiceStatusModel.init(rawValue:))
+            ?? Self.defaultMenuBarModel
     }
 
     var selectedService: ServiceStatusService? {
-        response?.service(model: Self.targetModel)
+        response?.service(model: menuBarModel.rawValue)
     }
 
     var displayCells: [ServiceStatusDisplayCell] {
@@ -164,8 +190,8 @@ final class ServiceStatusMonitor: ObservableObject {
     }
 
     private func applySuccessfulRefresh(_ result: StatusAPIResult) throws {
-        guard result.response.service(model: Self.targetModel) != nil else {
-            let error = ServiceStatusMonitorError.missingModel(Self.targetModel)
+        guard result.response.service(model: Self.primaryModel.rawValue) != nil else {
+            let error = ServiceStatusMonitorError.missingModel(Self.primaryModel.rawValue)
             applyRefreshFailure(error)
             throw error
         }

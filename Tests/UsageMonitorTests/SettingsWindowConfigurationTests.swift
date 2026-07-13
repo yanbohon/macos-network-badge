@@ -11,7 +11,15 @@ final class SettingsWindowConfigurationTests: XCTestCase {
             timerFactory: ManualTimerFactory()
         )
 
-        let window = controller.makeWindow(monitor: monitor)
+        let serviceStatusMonitor = ServiceStatusMonitor(
+            userDefaults: UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!,
+            timerFactory: ManualTimerFactory()
+        )
+
+        let window = controller.makeWindow(
+            monitor: monitor,
+            serviceStatusMonitor: serviceStatusMonitor
+        )
 
         XCTAssertEqual(window.title, "用量监控")
         XCTAssertGreaterThanOrEqual(window.contentView?.frame.height ?? 0, 520)
@@ -25,7 +33,15 @@ final class SettingsWindowConfigurationTests: XCTestCase {
             timerFactory: ManualTimerFactory()
         )
 
-        let window = controller.makeWindow(monitor: monitor)
+        let serviceStatusMonitor = ServiceStatusMonitor(
+            userDefaults: UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!,
+            timerFactory: ManualTimerFactory()
+        )
+
+        let window = controller.makeWindow(
+            monitor: monitor,
+            serviceStatusMonitor: serviceStatusMonitor
+        )
 
         XCTAssertTrue(window.initialFirstResponder === window.contentViewController?.view)
     }

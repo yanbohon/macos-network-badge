@@ -11,8 +11,15 @@ final class SettingsViewRenderingTests: XCTestCase {
             client: Sub2APIClient(requestLoader: RequestRecordingLoader()),
             timerFactory: ManualTimerFactory()
         )
+        let serviceStatusMonitor = ServiceStatusMonitor(
+            userDefaults: UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!,
+            timerFactory: ManualTimerFactory()
+        )
 
-        let window = controller.makeWindow(monitor: monitor)
+        let window = controller.makeWindow(
+            monitor: monitor,
+            serviceStatusMonitor: serviceStatusMonitor
+        )
 
         for size in [
             NSSize(width: 460, height: 430),

@@ -24,6 +24,39 @@ final class MenuBarViewTests: XCTestCase {
         XCTAssertTrue(source.contains("Base URL"))
     }
 
+    func testPopoverDefaultsToGPT56SolAndDisclosesRemainingModels() throws {
+        let source = try menuBarViewSource()
+
+        XCTAssertTrue(source.contains("@State private var showsAllServiceStatuses = false"))
+        XCTAssertTrue(source.contains("serviceStatusMonitor.timelineRows.first"))
+        XCTAssertTrue(source.contains("serviceStatusMonitor.timelineRows.dropFirst()"))
+        XCTAssertTrue(source.contains("if showsAllServiceStatuses"))
+        XCTAssertTrue(source.contains("chevron.up"))
+        XCTAssertTrue(source.contains("chevron.down"))
+        XCTAssertTrue(source.contains("展开其他模型状态"))
+    }
+
+    func testPopoverOmitsVerboseUsageDetailsAndDuplicateKeyRefreshStatus() throws {
+        let source = try menuBarViewSource()
+
+        XCTAssertFalse(source.contains("usageSection(snapshot.usage)"))
+        XCTAssertFalse(source.contains("modelStatsSection(snapshot.modelStats)"))
+        XCTAssertFalse(source.contains("private func usageSection"))
+        XCTAssertFalse(source.contains("private func modelStatsSection"))
+
+        let keySummaryStart = try XCTUnwrap(source.range(of: "private func keySummary"))
+        let usageSnapshotStart = try XCTUnwrap(
+            source.range(
+                of: "private func usageSnapshot",
+                range: keySummaryStart.upperBound..<source.endIndex
+            )
+        )
+        let keySummarySource = source[keySummaryStart.lowerBound..<usageSnapshotStart.lowerBound]
+
+        XCTAssertFalse(keySummarySource.contains("statusLineText(for: entry)"))
+        XCTAssertFalse(keySummarySource.contains("entry.lastSuccessfulRefresh"))
+    }
+
     func testSettingsKeyRowsExposeWholeRowClickTarget() throws {
         let source = try settingsViewSource()
 
@@ -49,6 +82,14 @@ final class MenuBarViewTests: XCTestCase {
 
         XCTAssertTrue(source.contains("菜单栏隐藏 SF Symbol"))
         XCTAssertTrue(source.contains("$monitor.hideMenuBarSymbols"))
+    }
+
+    func testSettingsExposesMenuBarServiceStatusPicker() throws {
+        let source = try settingsViewSource()
+
+        XCTAssertTrue(source.contains("菜单栏服务状态"))
+        XCTAssertTrue(source.contains("$serviceStatusMonitor.menuBarModel"))
+        XCTAssertTrue(source.contains("ServiceStatusMonitor.supportedModels"))
     }
 
     func testSettingsExposesPerKeyMenuBarAndSymbolColorControls() throws {

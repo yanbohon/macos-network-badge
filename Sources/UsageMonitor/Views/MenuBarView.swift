@@ -21,6 +21,7 @@ struct MenuBarView: View {
     @ObservedObject var serviceStatusMonitor: ServiceStatusMonitor
     @ObservedObject var settingsWindowController: SettingsWindowController
     @State private var selectedKeyIndex = 0
+    @State private var showsAllServiceStatuses = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -82,7 +83,10 @@ struct MenuBarView: View {
             .help("全部刷新")
 
             Button {
-                settingsWindowController.showWindow(monitor: monitor)
+                settingsWindowController.showWindow(
+                    monitor: monitor,
+                    serviceStatusMonitor: serviceStatusMonitor
+                )
             } label: {
                 Image(systemName: "gearshape")
             }
@@ -193,8 +197,14 @@ struct MenuBarView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            ForEach(serviceStatusMonitor.timelineRows) { row in
-                serviceTimelineRow(row)
+            if let primaryRow = serviceStatusMonitor.timelineRows.first {
+                serviceTimelineRow(primaryRow, showsDisclosure: true)
+            }
+
+            if showsAllServiceStatuses {
+                ForEach(Array(serviceStatusMonitor.timelineRows.dropFirst())) { row in
+                    serviceTimelineRow(row)
+                }
             }
 
             serviceStatusFooter
@@ -202,7 +212,10 @@ struct MenuBarView: View {
         .padding(.vertical, 2)
     }
 
-    private func serviceTimelineRow(_ row: ServiceStatusTimelineRow) -> some View {
+    private func serviceTimelineRow(
+        _ row: ServiceStatusTimelineRow,
+        showsDisclosure: Bool = false
+    ) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 7) {
                 Text(row.model)
@@ -215,6 +228,22 @@ struct MenuBarView: View {
                 Text(row.statusText)
                     .font(.caption.monospaced())
                     .foregroundColor(statusColor(for: row.latestKind))
+                if showsDisclosure {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            showsAllServiceStatuses.toggle()
+                        }
+                    } label: {
+                        Image(systemName: showsAllServiceStatuses ? "chevron.up" : "chevron.down")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 14, height: 14)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(showsAllServiceStatuses ? "收起其他模型状态" : "展开其他模型状态")
+                    .accessibilityLabel(showsAllServiceStatuses ? "收起其他模型状态" : "展开其他模型状态")
+                }
                 Spacer()
             }
 
@@ -367,14 +396,6 @@ struct MenuBarView: View {
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .lineLimit(1)
-            Text(statusLineText(for: entry))
-                .font(.caption)
-                .foregroundColor(.secondary)
-            if let date = entry.lastSuccessfulRefresh {
-                Text("上次成功刷新 \(date.formatted(date: .omitted, time: .standard))")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
             if let detail = entry.lastError {
                 Text(detail)
                     .font(.caption)
@@ -388,8 +409,6 @@ struct MenuBarView: View {
         VStack(alignment: .leading, spacing: 12) {
             planSection(snapshot)
             subscriptionSection(snapshot.subscription)
-            usageSection(snapshot.usage)
-            modelStatsSection(snapshot.modelStats)
         }
     }
 
@@ -439,58 +458,6 @@ struct MenuBarView: View {
                 .font(.caption)
                 .foregroundColor(.secondary)
         }
-    }
-
-    private func usageSection(_ usage: UsageUsageSummary) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text("请求")
-                .font(.caption.bold())
-            metricRow(title: "今日", value: UsageFormatters.bucketText(usage.today))
-            metricRow(title: "总计", value: UsageFormatters.bucketText(usage.total))
-            Text(UsageFormatters.rateText(rpm: usage.rpm, tpm: usage.tpm))
-                .font(.caption)
-                .foregroundColor(.secondary)
-            Text(String(format: "平均耗时 %.1f ms", usage.averageDurationMS))
-                .font(.caption)
-                .foregroundColor(.secondary)
-        }
-    }
-
-    private func modelStatsSection(_ modelStats: [UsageModelStat]) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("模型")
-                .font(.caption.bold())
-            if modelStats.isEmpty {
-                Text("暂无模型用量")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            } else {
-                ForEach(Array(modelStats.enumerated()), id: \.offset) { _, stat in
-                    modelStatRow(stat)
-                }
-            }
-        }
-    }
-
-    private func modelStatRow(_ stat: UsageModelStat) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack {
-                Text(stat.modelName)
-                    .font(.caption)
-                    .lineLimit(1)
-                Spacer()
-                Text("\(stat.requestCount) 次")
-                    .font(.caption.monospacedDigit())
-                    .foregroundColor(.secondary)
-            }
-            Text("\(stat.totalTokens) tokens · \(UsageFormatters.tokenBreakdownText(input: stat.inputTokens, output: stat.outputTokens))")
-                .font(.caption2)
-                .foregroundColor(.secondary)
-            Text("成本 \(UsageFormatters.currency(stat.totalCostUSD)) · \(UsageFormatters.costBreakdownText(input: stat.inputCostUSD, output: stat.outputCostUSD))")
-                .font(.caption2)
-                .foregroundColor(.secondary)
-        }
-        .padding(.vertical, 4)
     }
 
     private func metricRow(title: String, value: String, trailing: String? = nil) -> some View {
