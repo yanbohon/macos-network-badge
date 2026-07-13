@@ -3,8 +3,8 @@ import SwiftUI
 
 @MainActor
 final class SettingsWindowController: ObservableObject {
-    static let initialContentSize = NSSize(width: 500, height: 560)
-    static let minimumContentSize = NSSize(width: 420, height: 400)
+    static let initialContentSize = NSSize(width: 520, height: 600)
+    static let minimumContentSize = NSSize(width: 460, height: 480)
 
     private var window: NSWindow?
     private let backgroundUpdateCoordinator: BackgroundUpdateCoordinator

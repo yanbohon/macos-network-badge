@@ -3,7 +3,7 @@ import XCTest
 
 @MainActor
 final class SettingsWindowConfigurationTests: XCTestCase {
-    func testCreatedWindowUsesATallerInitialHeight() {
+    func testCreatedWindowUsesSettingsLayoutSize() {
         let controller = SettingsWindowController(activateApplication: {})
         let monitor = UsageSnapshotMonitor(
             userDefaults: UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!,
@@ -22,7 +22,8 @@ final class SettingsWindowConfigurationTests: XCTestCase {
         )
 
         XCTAssertEqual(window.title, "用量监控")
-        XCTAssertGreaterThanOrEqual(window.contentView?.frame.height ?? 0, 520)
+        XCTAssertEqual(window.contentView?.frame.size, SettingsWindowController.initialContentSize)
+        XCTAssertEqual(window.contentMinSize, SettingsWindowController.minimumContentSize)
     }
 
     func testCreatedWindowUsesHostingViewAsInitialFirstResponder() {
