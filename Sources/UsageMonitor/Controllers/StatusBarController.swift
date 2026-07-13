@@ -413,14 +413,15 @@ final class StatusBarController: NSObject {
 
     private func configurePopover() {
         popover.behavior = .transient
-        popover.contentSize = NSSize(width: 440, height: 620)
-        popover.contentViewController = NSHostingController(
+        let hostingController = NSHostingController(
             rootView: MenuBarView(
                 monitor: usageMonitor,
                 serviceStatusMonitor: serviceStatusMonitor,
                 settingsWindowController: settingsWindowController
             )
         )
+        popover.contentViewController = hostingController
+        popover.contentSize = hostingController.view.fittingSize
     }
 
     private func bindMonitors() {
