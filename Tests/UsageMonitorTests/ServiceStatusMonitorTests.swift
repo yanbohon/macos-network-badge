@@ -77,6 +77,30 @@ final class ServiceStatusMonitorTests: XCTestCase {
         XCTAssertEqual(completedCount, 1)
     }
 
+    func testTimerTicksDoNotAccumulateRefreshWaitersWhileRequestIsInFlight() async {
+        let client = BlockingServiceStatusClient()
+        let timers = ManualTimerFactory()
+        let monitor = ServiceStatusMonitor(client: client, timerFactory: timers)
+
+        monitor.start()
+        while await client.fetchCount() == 0 {
+            await Task.yield()
+        }
+
+        for _ in 0..<100 {
+            timers.timers.last?.fire()
+        }
+        for _ in 0..<100 {
+            await Task.yield()
+        }
+
+        XCTAssertEqual(monitor.peakTimerRefreshCount, 1)
+        await client.resume(.success(Self.statusResult()))
+        while monitor.activeTimerRefreshCount > 0 {
+            await Task.yield()
+        }
+    }
+
     func testFailureAfterSuccessKeepsPreviousCellsAndMarksStale() async throws {
         let client = StubServiceStatusClient(results: [
             .success(Self.statusResult()),

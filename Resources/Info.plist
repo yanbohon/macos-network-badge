@@ -17,7 +17,7 @@
     <string>2</string>
 
     <key>CFBundleShortVersionString</key>
-    <string>0.0.2</string>
+    <string>0.0.4</string>
 
     <key>CFBundleExecutable</key>
     <string>UsageMonitor</string>

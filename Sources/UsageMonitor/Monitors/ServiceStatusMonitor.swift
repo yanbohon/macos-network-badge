@@ -29,6 +29,9 @@ final class ServiceStatusMonitor: ObservableObject {
     private let now: () -> Date
     private var refreshTimer: RefreshTimer?
     private var refreshTask: Task<StatusAPIResult, Error>?
+    private var isTimerRefreshInFlight = false
+    private(set) var activeTimerRefreshCount = 0
+    private(set) var peakTimerRefreshCount = 0
     private var hasStarted = false
 
     init(
@@ -119,6 +122,14 @@ final class ServiceStatusMonitor: ObservableObject {
     }
 
     private func refreshFromTimer() async {
+        guard !isTimerRefreshInFlight else { return }
+        isTimerRefreshInFlight = true
+        activeTimerRefreshCount += 1
+        peakTimerRefreshCount = max(peakTimerRefreshCount, activeTimerRefreshCount)
+        defer {
+            activeTimerRefreshCount -= 1
+            isTimerRefreshInFlight = false
+        }
         do {
             try await performRefresh()
         } catch {
