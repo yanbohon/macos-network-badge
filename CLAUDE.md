@@ -33,7 +33,7 @@ No test should call a real service. Use the injectable `Sub2APIRequestLoading` p
 - `UsageSnapshotMonitor` — `ObservableObject` in `Monitors/UsageSnapshotMonitor.swift` owning config, validation, refresh, cached snapshot, error state, and timer state
 - `BackgroundUpdateCoordinator` — daily GitHub Release checks, reminder throttling, and native update alerts
 - `UsageFormatters` — currency, menu-bar daily usage, balance, usage limits, bucket text, expiry, and quota health formatting
-- `MenuBarView` — popover UI for remaining balance, plan, mode, subscription, usage summary, and model stats
+- `MenuBarView` — popover UI for service status, per-key balance and configuration, plan, subscription limits, and alerts
 - `SettingsView` — Base URL, API Key, decimal-display toggle, refresh interval, validation, and manual refresh controls
 - `SettingsWindowController` — separate settings window lifecycle
 

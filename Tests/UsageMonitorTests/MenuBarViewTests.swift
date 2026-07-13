@@ -24,6 +24,27 @@ final class MenuBarViewTests: XCTestCase {
         XCTAssertTrue(source.contains("Base URL"))
     }
 
+    func testPopoverOmitsVerboseUsageDetailsAndDuplicateKeyRefreshStatus() throws {
+        let source = try menuBarViewSource()
+
+        XCTAssertFalse(source.contains("usageSection(snapshot.usage)"))
+        XCTAssertFalse(source.contains("modelStatsSection(snapshot.modelStats)"))
+        XCTAssertFalse(source.contains("private func usageSection"))
+        XCTAssertFalse(source.contains("private func modelStatsSection"))
+
+        let keySummaryStart = try XCTUnwrap(source.range(of: "private func keySummary"))
+        let usageSnapshotStart = try XCTUnwrap(
+            source.range(
+                of: "private func usageSnapshot",
+                range: keySummaryStart.upperBound..<source.endIndex
+            )
+        )
+        let keySummarySource = source[keySummaryStart.lowerBound..<usageSnapshotStart.lowerBound]
+
+        XCTAssertFalse(keySummarySource.contains("statusLineText(for: entry)"))
+        XCTAssertFalse(keySummarySource.contains("entry.lastSuccessfulRefresh"))
+    }
+
     func testSettingsKeyRowsExposeWholeRowClickTarget() throws {
         let source = try settingsViewSource()
 
