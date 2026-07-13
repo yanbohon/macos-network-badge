@@ -35,13 +35,13 @@ final class GitHubReleaseUpdateTests: XCTestCase {
             ]
         )
 
-        let result = await checker.checkForUpdate(includePrereleases: false)
+        let result = await checker.checkForUpdate()
 
         XCTAssertEqual(result.statusText, "发现新版本 v1.0.1")
-        XCTAssertEqual(result.downloadURL?.absoluteString, "https://github.com/yanbohon/UsageMonitor/releases/download/v1.0.1/UsageMonitor.dmg")
+        XCTAssertEqual(result.releaseURL?.absoluteString, "https://github.com/yanbohon/macos-network-badge/releases/tag/v1.0.1")
     }
 
-    func testUpdateCheckerExcludesPrereleasesWhenTestingUpdatesAreOff() async {
+    func testUpdateCheckerExcludesGitHubPrereleases() async {
         let checker = makeChecker(
             currentVersion: "v1.0.0",
             releases: [
@@ -50,25 +50,25 @@ final class GitHubReleaseUpdateTests: XCTestCase {
             ]
         )
 
-        let result = await checker.checkForUpdate(includePrereleases: false)
+        let result = await checker.checkForUpdate()
 
         XCTAssertEqual(result.statusText, "发现新版本 v1.0.1")
-        XCTAssertEqual(result.downloadURL?.absoluteString, "https://github.com/yanbohon/UsageMonitor/releases/download/v1.0.1/UsageMonitor.dmg")
+        XCTAssertEqual(result.releaseURL?.absoluteString, "https://github.com/yanbohon/macos-network-badge/releases/tag/v1.0.1")
     }
 
-    func testUpdateCheckerIncludesPrereleasesWhenTestingUpdatesAreOn() async {
+    func testUpdateCheckerExcludesPrereleaseTagsEvenWhenGitHubMetadataIsStable() async {
         let checker = makeChecker(
             currentVersion: "v1.0.0",
             releases: [
-                release(tag: "v1.1.0-beta.1", prerelease: true),
+                release(tag: "v1.1.0-beta.1", prerelease: false),
                 release(tag: "v1.0.1"),
             ]
         )
 
-        let result = await checker.checkForUpdate(includePrereleases: true)
+        let result = await checker.checkForUpdate()
 
-        XCTAssertEqual(result.statusText, "发现测试版 v1.1.0-beta.1")
-        XCTAssertEqual(result.downloadURL?.absoluteString, "https://github.com/yanbohon/UsageMonitor/releases/download/v1.1.0-beta.1/UsageMonitor.dmg")
+        XCTAssertEqual(result.statusText, "发现新版本 v1.0.1")
+        XCTAssertEqual(result.releaseURL?.absoluteString, "https://github.com/yanbohon/macos-network-badge/releases/tag/v1.0.1")
     }
 
     func testUpdateCheckerChoosesHighestNewerMatchingRelease() async {
@@ -81,26 +81,22 @@ final class GitHubReleaseUpdateTests: XCTestCase {
             ]
         )
 
-        let result = await checker.checkForUpdate(includePrereleases: false)
+        let result = await checker.checkForUpdate()
 
         XCTAssertEqual(result.statusText, "发现新版本 v1.2.5")
-        XCTAssertEqual(result.downloadURL?.absoluteString, "https://github.com/yanbohon/UsageMonitor/releases/download/v1.2.5/UsageMonitor.dmg")
+        XCTAssertEqual(result.releaseURL?.absoluteString, "https://github.com/yanbohon/macos-network-badge/releases/tag/v1.2.5")
     }
 
-    func testUpdateCheckerFallsBackToReleasePageWhenDMGAssetMissing() async {
+    func testUpdateCheckerUsesGitHubReleasePage() async {
         let checker = makeChecker(
             currentVersion: "v1.0.0",
-            releases: [
-                release(tag: "v1.1.0", assets: [
-                    asset(name: "UsageMonitor.dmg.sha256"),
-                ]),
-            ]
+            releases: [release(tag: "v1.1.0")]
         )
 
-        let result = await checker.checkForUpdate(includePrereleases: false)
+        let result = await checker.checkForUpdate()
 
         XCTAssertEqual(result.statusText, "发现新版本 v1.1.0")
-        XCTAssertEqual(result.downloadURL?.absoluteString, "https://github.com/yanbohon/UsageMonitor/releases/tag/v1.1.0")
+        XCTAssertEqual(result.releaseURL?.absoluteString, "https://github.com/yanbohon/macos-network-badge/releases/tag/v1.1.0")
     }
 
     func testUpdateCheckerMapsInvalidResponseToFormatMessage() async {
@@ -109,7 +105,7 @@ final class GitHubReleaseUpdateTests: XCTestCase {
             currentVersion: AppVersion.parse("v1.0.0")!
         )
 
-        let result = await checker.checkForUpdate(includePrereleases: false)
+        let result = await checker.checkForUpdate()
 
         XCTAssertEqual(result.statusText, "更新信息格式异常")
     }
@@ -120,7 +116,7 @@ final class GitHubReleaseUpdateTests: XCTestCase {
             currentVersion: AppVersion.parse("v1.0.0")!
         )
 
-        let result = await checker.checkForUpdate(includePrereleases: false)
+        let result = await checker.checkForUpdate()
 
         XCTAssertEqual(result.statusText, "检查更新失败，请稍后重试")
     }
@@ -144,7 +140,7 @@ final class GitHubReleaseUpdateTests: XCTestCase {
             draft: draft,
             prerelease: prerelease,
             publishedAt: Date(timeIntervalSince1970: 1_725_000_000),
-            htmlURL: URL(string: "https://github.com/yanbohon/UsageMonitor/releases/tag/\(tag)")!,
+            htmlURL: URL(string: "https://github.com/yanbohon/macos-network-badge/releases/tag/\(tag)")!,
             assets: resolvedAssets
         )
     }
@@ -152,16 +148,10 @@ final class GitHubReleaseUpdateTests: XCTestCase {
     private func dmgAsset(tag: String) -> GitHubReleaseAsset {
         GitHubReleaseAsset(
             name: "UsageMonitor.dmg",
-            browserDownloadURL: URL(string: "https://github.com/yanbohon/UsageMonitor/releases/download/\(tag)/UsageMonitor.dmg")!
+            browserDownloadURL: URL(string: "https://github.com/yanbohon/macos-network-badge/releases/download/\(tag)/UsageMonitor.dmg")!
         )
     }
 
-    private func asset(name: String) -> GitHubReleaseAsset {
-        GitHubReleaseAsset(
-            name: name,
-            browserDownloadURL: URL(string: "https://example.com/\(name)")!
-        )
-    }
 }
 
 private struct StubGitHubReleaseProvider: GitHubReleaseProviding {

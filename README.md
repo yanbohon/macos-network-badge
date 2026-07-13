@@ -10,6 +10,7 @@
 - Shows `subscription.daily_usage_usd` in the menu bar, with an option to hide decimal places
 - Shows remaining balance, plan, mode, subscription limits, usage summary, and model stats in the popover
 - Preserves the last successful usage snapshot in memory when refresh fails
+- Checks stable GitHub Releases from settings and opens the release page when an update is available
 
 ## Requirements
 
@@ -37,7 +38,7 @@ Refresh intervals are limited to 1, 5, 15, 30, and 60 minutes. The default is 5 
 ## Build for Distribution
 
 ```bash
-./scripts/build-app.sh
+BUILD_ARCH=arm64 ./scripts/build-app.sh
 ./scripts/create-dmg.sh
 ```
 
@@ -45,6 +46,8 @@ Outputs:
 
 - `build/UsageMonitor.app`
 - `build/UsageMonitor.dmg`
+
+GitHub Actions publishes an arm64 DMG for stable `X.Y.Z` releases. The release repository must be public for the app's unauthenticated update check to work.
 
 ## Run Tests
 

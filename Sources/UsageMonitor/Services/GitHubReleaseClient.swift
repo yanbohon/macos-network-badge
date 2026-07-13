@@ -15,7 +15,7 @@ final class GitHubReleaseClient: GitHubReleaseProviding {
     }
 
     func fetchReleases() async throws -> [GitHubRelease] {
-        var request = URLRequest(url: URL(string: "https://api.github.com/repos/yanbohon/UsageMonitor/releases")!)
+        var request = URLRequest(url: URL(string: "https://api.github.com/repos/yanbohon/macos-network-badge/releases")!)
         request.httpMethod = "GET"
         request.timeoutInterval = 20
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
