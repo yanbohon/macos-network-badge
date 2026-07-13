@@ -52,7 +52,7 @@ struct SettingsView: View {
             Alert(
                 title: Text("发现新版本 \(info.versionText)"),
                 message: Text("是否前往 GitHub 发布页面查看并下载更新？"),
-                primaryButton: .default(Text("前往 GitHub")) {
+                primaryButton: .default(Text("下载更新")) {
                     NSWorkspace.shared.open(info.releaseURL)
                 },
                 secondaryButton: .cancel(Text("稍后"))

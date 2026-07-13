@@ -10,7 +10,7 @@
 - Shows `subscription.daily_usage_usd` in the menu bar, with an option to hide decimal places
 - Shows remaining balance, plan, mode, subscription limits, usage summary, and model stats in the popover
 - Preserves the last successful usage snapshot in memory when refresh fails
-- Checks stable GitHub Releases from settings and opens the release page when an update is available
+- Checks stable GitHub Releases daily in the background and from settings, then opens the release page when an update is available
 
 ## Requirements
 
