@@ -4,6 +4,13 @@ import XCTest
 
 @MainActor
 final class ServiceStatusMonitorTests: XCTestCase {
+    func testMonitoredModelsContainGPT56SeriesAndGPT55Only() {
+        XCTAssertEqual(
+            ServiceStatusMonitor.monitoredModels,
+            ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5"]
+        )
+    }
+
     func testStartSchedulesOneMinuteTimerAndRefreshesOnce() async throws {
         let client = StubServiceStatusClient(results: [
             .success(Self.statusResult()),
