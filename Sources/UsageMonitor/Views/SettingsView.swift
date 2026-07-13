@@ -9,7 +9,6 @@ struct SettingsView: View {
     @State private var updateCheckResult: UpdateCheckResult?
     @State private var updateAlertInfo: UpdateReleaseInfo?
     @State private var isCheckingForUpdate = false
-    @State private var updateCheckGeneration = 0
     @State private var selectedKeyID: String?
 
     init(
@@ -544,18 +543,12 @@ struct SettingsView: View {
     }
 
     private func startUpdateCheck() {
-        updateCheckGeneration += 1
-        let requestGeneration = updateCheckGeneration
         updateCheckResult = nil
         isCheckingForUpdate = true
 
         Task {
             let result = await updateChecker.checkForUpdate()
             await MainActor.run {
-                guard requestGeneration == updateCheckGeneration else {
-                    isCheckingForUpdate = false
-                    return
-                }
                 isCheckingForUpdate = false
                 updateCheckResult = result
                 if case let .updateAvailable(info) = result {
