@@ -1,0 +1,19 @@
+"$schema" = "https://conductor.build/schemas/settings.repo.schema.json"
+
+[scripts]
+setup = "swift package resolve"
+archive = "rm -rf .build build"
+run_mode = "nonconcurrent"
+
+[scripts.run.app]
+command = "swift run UsageMonitor"
+default = true
+icon = "monitor"
+
+[scripts.run.test]
+command = "swift test"
+icon = "test-tube"
+
+[scripts.run.bundle]
+command = "./scripts/build-app.sh"
+icon = "package"
