@@ -100,6 +100,9 @@ final class UsageSnapshotMonitor: ObservableObject {
     private let now: () -> Date
     private var refreshTimer: RefreshTimer?
     private var refreshTasks: [String: Task<UsageResponse, Error>] = [:]
+    private var isTimerRefreshInFlight = false
+    private(set) var activeTimerRefreshCount = 0
+    private(set) var peakTimerRefreshCount = 0
     private var hasStarted = false
     private var lastAlertSignatures: [String: [UsageThresholdAlertKind]] = [:]
 
@@ -396,6 +399,14 @@ final class UsageSnapshotMonitor: ObservableObject {
     }
 
     private func refreshFromTimer() async {
+        guard !isTimerRefreshInFlight else { return }
+        isTimerRefreshInFlight = true
+        activeTimerRefreshCount += 1
+        peakTimerRefreshCount = max(peakTimerRefreshCount, activeTimerRefreshCount)
+        defer {
+            activeTimerRefreshCount -= 1
+            isTimerRefreshInFlight = false
+        }
         await refreshAll(configurationRequired: false)
     }
 

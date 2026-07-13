@@ -462,6 +462,38 @@ final class UsageSnapshotMonitorTests: XCTestCase {
         XCTAssertEqual(monitor.menuBarText, "$84.04")
     }
 
+    func testTimerTicksDoNotAccumulateRefreshWaitersWhileRequestIsInFlight() async {
+        let defaults = UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!
+        let loader = BlockingRequestLoader()
+        let timers = ManualTimerFactory()
+        let monitor = UsageSnapshotMonitor(
+            userDefaults: defaults,
+            client: Sub2APIClient(requestLoader: loader),
+            timerFactory: timers
+        )
+
+        monitor.updateBaseURL("https://sub.example.com")
+        monitor.updateAPIKey("key")
+
+        timers.timers.last?.fire()
+        while await loader.requestCount() == 0 {
+            await Task.yield()
+        }
+
+        for _ in 0..<100 {
+            timers.timers.last?.fire()
+        }
+        for _ in 0..<100 {
+            await Task.yield()
+        }
+
+        XCTAssertEqual(monitor.peakTimerRefreshCount, 1)
+        await loader.resume(statusCode: 200, body: makeUsageJSON())
+        while monitor.activeTimerRefreshCount > 0 {
+            await Task.yield()
+        }
+    }
+
     func testOldConfigurationResponseIsIgnoredAfterSettingsChange() async throws {
         let defaults = UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!
         let loader = BlockingRequestLoader()
