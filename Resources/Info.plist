@@ -14,10 +14,10 @@
     <string>com.usagemonitor.menubar</string>
 
     <key>CFBundleVersion</key>
-    <string>2</string>
+    <string>3</string>
 
     <key>CFBundleShortVersionString</key>
-    <string>0.0.4</string>
+    <string>0.0.5</string>
 
     <key>CFBundleExecutable</key>
     <string>UsageMonitor</string>
