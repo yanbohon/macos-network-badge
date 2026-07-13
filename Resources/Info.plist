@@ -1,47 +1,26 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- App identity -->
-    <key>CFBundleName</key>
-    <string>UsageMonitor</string>
-
-    <key>CFBundleDisplayName</key>
-    <string>用量监控</string>
-
-    <key>CFBundleIdentifier</key>
-    <string>com.usagemonitor.menubar</string>
-
-    <key>CFBundleVersion</key>
-    <string>2</string>
-
-    <key>CFBundleShortVersionString</key>
-    <string>0.0.4</string>
-
-    <key>CFBundleExecutable</key>
-    <string>UsageMonitor</string>
-
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-
-    <!--
-      LSUIElement = true makes this a "background" app:
-      - It shows in the menu bar (top-right)
-      - It does NOT show in the Dock
-      - It does NOT appear in the Cmd+Tab app switcher
-      This is the standard pattern for menu bar utilities.
-    -->
-    <key>LSUIElement</key>
-    <true/>
-
-    <!-- App icon (without .icns extension) -->
-    <key>CFBundleIconFile</key>
-    <string>AppIcon</string>
-
-    <!-- Minimum macOS version -->
-    <key>LSMinimumSystemVersion</key>
-    <string>13.0</string>
-
+	<key>CFBundleDisplayName</key>
+	<string>用量监控</string>
+	<key>CFBundleExecutable</key>
+	<string>UsageMonitor</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.usagemonitor.menubar</string>
+	<key>CFBundleName</key>
+	<string>UsageMonitor</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.0.4</string>
+	<key>CFBundleVersion</key>
+	<string>2</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>13.0</string>
+	<key>LSUIElement</key>
+	<true/>
 </dict>
 </plist>
