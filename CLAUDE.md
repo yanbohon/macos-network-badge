@@ -27,7 +27,7 @@ No test should call a real service. Use the injectable `Sub2APIRequestLoading` p
 
 ## Architecture
 
-- `UsageMonitorApp` — SwiftUI `MenuBarExtra` entry point
+- `UsageMonitorApp` — AppKit accessory-app entry point that owns the application delegate and status item lifecycle
 - `Sub2APIModels` — usage response DTOs for `UsageResponse`, `UsageSubscription`, usage buckets, and model stats
 - `Sub2APIClient` — `GET /v1/usage` request construction, response decoding, HTTP/network/API error mapping
 - `UsageSnapshotMonitor` — `ObservableObject` in `Monitors/UsageSnapshotMonitor.swift` owning config, validation, refresh, cached snapshot, error state, and timer state

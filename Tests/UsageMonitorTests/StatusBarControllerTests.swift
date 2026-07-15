@@ -4,6 +4,54 @@ import XCTest
 
 @MainActor
 final class StatusBarControllerTests: XCTestCase {
+    func testStatusBarControllerCanSkipStartingMonitorsForLaunchCheck() {
+        let usageTimers = ManualTimerFactory()
+        let serviceTimers = ManualTimerFactory()
+        let usageMonitor = UsageSnapshotMonitor(
+            userDefaults: UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!,
+            client: Sub2APIClient(requestLoader: RequestRecordingLoader()),
+            timerFactory: usageTimers
+        )
+        let serviceMonitor = ServiceStatusMonitor(
+            userDefaults: UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!,
+            timerFactory: serviceTimers
+        )
+
+        _ = StatusBarController(
+            usageMonitor: usageMonitor,
+            serviceStatusMonitor: serviceMonitor,
+            settingsWindowController: SettingsWindowController(activateApplication: {}),
+            startsMonitors: false
+        )
+
+        XCTAssertEqual(usageTimers.scheduledIntervals, [])
+        XCTAssertEqual(serviceTimers.scheduledIntervals, [])
+    }
+
+    func testPopoverUsesHostedContentFittingSizeForAnchorPosition() throws {
+        let usageMonitor = UsageSnapshotMonitor(
+            userDefaults: UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!,
+            client: Sub2APIClient(requestLoader: RequestRecordingLoader()),
+            timerFactory: ManualTimerFactory()
+        )
+        let serviceMonitor = ServiceStatusMonitor(
+            userDefaults: UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!,
+            timerFactory: ManualTimerFactory()
+        )
+        let controller = StatusBarController(
+            usageMonitor: usageMonitor,
+            serviceStatusMonitor: serviceMonitor,
+            settingsWindowController: SettingsWindowController(activateApplication: {}),
+            startsMonitors: false
+        )
+        let popover = try XCTUnwrap(
+            Mirror(reflecting: controller).children.first(where: { $0.label == "popover" })?.value as? NSPopover
+        )
+        let hostedView = try XCTUnwrap(popover.contentViewController?.view)
+
+        XCTAssertEqual(popover.contentSize, hostedView.fittingSize)
+    }
+
     func testStatusBarTitleUsesLatestStatusAndDisplayTextForAccessibility() {
         let title = StatusBarController.titleText(
             displayText: "$52.58",

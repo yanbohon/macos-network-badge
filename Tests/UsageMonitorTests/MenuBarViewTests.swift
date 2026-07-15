@@ -80,8 +80,8 @@ final class MenuBarViewTests: XCTestCase {
     func testSettingsExposesSingleKeySymbolVisibilityToggle() throws {
         let source = try settingsViewSource()
 
-        XCTAssertTrue(source.contains("菜单栏隐藏 SF Symbol"))
-        XCTAssertTrue(source.contains("$monitor.hideMenuBarSymbols"))
+        XCTAssertTrue(source.contains("显示 SF Symbol"))
+        XCTAssertTrue(source.contains("showMenuBarSymbolsBinding"))
     }
 
     func testSettingsExposesMenuBarServiceStatusPicker() throws {

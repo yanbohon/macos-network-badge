@@ -22,8 +22,8 @@ final class SettingsViewRenderingTests: XCTestCase {
         )
 
         for size in [
-            NSSize(width: 460, height: 430),
-            NSSize(width: 420, height: 400)
+            SettingsWindowController.initialContentSize,
+            SettingsWindowController.minimumContentSize,
         ] {
             window.setContentSize(size)
             window.contentView?.layoutSubtreeIfNeeded()
