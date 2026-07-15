@@ -18,12 +18,15 @@ if [[ ! -x "$binary_path" ]]; then
     exit 2
 fi
 
-"$binary_path" >/dev/null 2>&1 &
+preferences_home="$(mktemp -d "${TMPDIR:-/tmp}/UsageMonitorLaunchCheck.XXXXXX")"
+HOME="$preferences_home" CFFIXED_USER_HOME="$preferences_home" \
+    "$binary_path" --launch-window-check >/dev/null 2>&1 &
 pid=$!
 
 cleanup() {
     kill "$pid" >/dev/null 2>&1 || true
     wait "$pid" >/dev/null 2>&1 || true
+    rm -rf "$preferences_home"
 }
 trap cleanup EXIT
 

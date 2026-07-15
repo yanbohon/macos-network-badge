@@ -2,10 +2,20 @@ import AppKit
 
 @main
 enum UsageMonitorApp {
+    static let launchWindowCheckArgument = "--launch-window-check"
+
+    static func backgroundActivitiesEnabled(arguments: [String]) -> Bool {
+        !arguments.contains(launchWindowCheckArgument)
+    }
+
     @MainActor
     static func main() {
         let application = NSApplication.shared
-        let delegate = AppDelegate()
+        let delegate = AppDelegate(
+            startsBackgroundActivities: backgroundActivitiesEnabled(
+                arguments: ProcessInfo.processInfo.arguments
+            )
+        )
         application.delegate = delegate
         withExtendedLifetime(delegate) {
             application.run()
@@ -15,6 +25,7 @@ enum UsageMonitorApp {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private let startsBackgroundActivities: Bool
     private let backgroundUpdateCoordinator = BackgroundUpdateCoordinator()
     private lazy var settingsWindowController = SettingsWindowController(
         backgroundUpdateCoordinator: backgroundUpdateCoordinator
@@ -22,6 +33,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var monitor: UsageSnapshotMonitor?
     private var serviceStatusMonitor: ServiceStatusMonitor?
     private var statusBarController: StatusBarController?
+
+    init(startsBackgroundActivities: Bool = true) {
+        self.startsBackgroundActivities = startsBackgroundActivities
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         UsageDefaultsMigration.migrateStandardDefaultsFromLegacyBundleIfNeeded()
@@ -34,8 +49,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusBarController = StatusBarController(
             usageMonitor: monitor,
             serviceStatusMonitor: serviceStatusMonitor,
-            settingsWindowController: settingsWindowController
+            settingsWindowController: settingsWindowController,
+            startsMonitors: startsBackgroundActivities
         )
-        backgroundUpdateCoordinator.start()
+        if startsBackgroundActivities {
+            backgroundUpdateCoordinator.start()
+        }
     }
 }

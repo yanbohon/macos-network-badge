@@ -4,6 +4,30 @@ import XCTest
 
 @MainActor
 final class StatusBarControllerTests: XCTestCase {
+    func testStatusBarControllerCanSkipStartingMonitorsForLaunchCheck() {
+        let usageTimers = ManualTimerFactory()
+        let serviceTimers = ManualTimerFactory()
+        let usageMonitor = UsageSnapshotMonitor(
+            userDefaults: UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!,
+            client: Sub2APIClient(requestLoader: RequestRecordingLoader()),
+            timerFactory: usageTimers
+        )
+        let serviceMonitor = ServiceStatusMonitor(
+            userDefaults: UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!,
+            timerFactory: serviceTimers
+        )
+
+        _ = StatusBarController(
+            usageMonitor: usageMonitor,
+            serviceStatusMonitor: serviceMonitor,
+            settingsWindowController: SettingsWindowController(activateApplication: {}),
+            startsMonitors: false
+        )
+
+        XCTAssertEqual(usageTimers.scheduledIntervals, [])
+        XCTAssertEqual(serviceTimers.scheduledIntervals, [])
+    }
+
     func testPopoverUsesHostedContentFittingSizeForAnchorPosition() throws {
         let usageMonitor = UsageSnapshotMonitor(
             userDefaults: UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!,

@@ -38,7 +38,8 @@ final class StatusBarController: NSObject {
         usageMonitor: UsageSnapshotMonitor,
         serviceStatusMonitor: ServiceStatusMonitor,
         settingsWindowController: SettingsWindowController,
-        statusBar: NSStatusBar = .system
+        statusBar: NSStatusBar = .system,
+        startsMonitors: Bool = true
     ) {
         self.usageMonitor = usageMonitor
         self.serviceStatusMonitor = serviceStatusMonitor
@@ -50,8 +51,10 @@ final class StatusBarController: NSObject {
         configureStatusItem()
         configurePopover()
         bindMonitors()
-        usageMonitor.start()
-        serviceStatusMonitor.start()
+        if startsMonitors {
+            usageMonitor.start()
+            serviceStatusMonitor.start()
+        }
         updateStatusTitle()
     }
 
