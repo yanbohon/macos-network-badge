@@ -41,7 +41,8 @@ final class StatusBarControllerTests: XCTestCase {
         let controller = StatusBarController(
             usageMonitor: usageMonitor,
             serviceStatusMonitor: serviceMonitor,
-            settingsWindowController: SettingsWindowController(activateApplication: {})
+            settingsWindowController: SettingsWindowController(activateApplication: {}),
+            startsMonitors: false
         )
         let popover = try XCTUnwrap(
             Mirror(reflecting: controller).children.first(where: { $0.label == "popover" })?.value as? NSPopover

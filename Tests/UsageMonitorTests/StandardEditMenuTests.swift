@@ -36,8 +36,8 @@ final class StandardEditMenuTests: XCTestCase {
         let menu = StandardEditMenu.makeMenu()
         let actions = Set(menu.items.compactMap { $0.action })
 
-        XCTAssertTrue(actions.contains(#selector(UndoManager.undo)))
-        XCTAssertTrue(actions.contains(#selector(UndoManager.redo)))
+        XCTAssertTrue(actions.contains(Selector(("undo:"))))
+        XCTAssertTrue(actions.contains(Selector(("redo:"))))
         XCTAssertTrue(actions.contains(#selector(NSText.cut(_:))))
         XCTAssertTrue(actions.contains(#selector(NSText.copy(_:))))
         XCTAssertTrue(actions.contains(#selector(NSText.paste(_:))))
@@ -46,8 +46,8 @@ final class StandardEditMenuTests: XCTestCase {
 
     func testEditMenuProvidesStandardUndoAndRedoShortcuts() {
         let menu = StandardEditMenu.makeMenu()
-        let undoItem = menu.items.first { $0.action == #selector(UndoManager.undo) }
-        let redoItem = menu.items.first { $0.action == #selector(UndoManager.redo) }
+        let undoItem = menu.items.first { $0.action == Selector(("undo:")) }
+        let redoItem = menu.items.first { $0.action == Selector(("redo:")) }
 
         XCTAssertEqual(undoItem?.keyEquivalent, "z")
         XCTAssertEqual(undoItem?.keyEquivalentModifierMask, .command)

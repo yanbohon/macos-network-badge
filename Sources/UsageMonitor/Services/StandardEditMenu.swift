@@ -13,11 +13,11 @@ enum StandardEditMenu {
 
     static func makeMenu() -> NSMenu {
         let menu = NSMenu(title: menuTitle)
-        menu.addItem(command("撤销", action: #selector(UndoManager.undo), key: "z"))
+        menu.addItem(command("撤销", action: Selector(("undo:")), key: "z"))
         menu.addItem(
             command(
                 "重做",
-                action: #selector(UndoManager.redo),
+                action: Selector(("redo:")),
                 key: "z",
                 modifiers: [.command, .shift]
             )
