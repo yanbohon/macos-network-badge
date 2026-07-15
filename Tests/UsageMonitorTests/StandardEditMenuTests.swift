@@ -3,6 +3,13 @@ import XCTest
 @testable import UsageMonitor
 
 final class StandardEditMenuTests: XCTestCase {
+    func testMainMenuContainsEditSubmenu() {
+        let mainMenu = StandardEditMenu.makeMainMenu()
+
+        XCTAssertEqual(mainMenu.items.map(\.title), [StandardEditMenu.menuTitle])
+        XCTAssertEqual(mainMenu.items.first?.submenu?.title, StandardEditMenu.menuTitle)
+    }
+
     func testEditMenuProvidesPasteShortcutThroughResponderChain() {
         let menu = StandardEditMenu.makeMenu()
 

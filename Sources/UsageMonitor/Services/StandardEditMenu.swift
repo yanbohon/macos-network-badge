@@ -3,6 +3,14 @@ import AppKit
 enum StandardEditMenu {
     static let menuTitle = "编辑"
 
+    static func makeMainMenu() -> NSMenu {
+        let mainMenu = NSMenu()
+        let editItem = NSMenuItem(title: menuTitle, action: nil, keyEquivalent: "")
+        editItem.submenu = makeMenu()
+        mainMenu.addItem(editItem)
+        return mainMenu
+    }
+
     static func makeMenu() -> NSMenu {
         let menu = NSMenu(title: menuTitle)
         menu.addItem(command("剪切", action: #selector(NSText.cut(_:)), key: "x"))

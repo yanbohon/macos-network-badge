@@ -1,15 +1,14 @@
-import SwiftUI
+import AppKit
 
 @main
-struct UsageMonitorApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-
-    var body: some Scene {
-        Settings {
-            EmptyView()
-        }
-        .commands {
-            TextEditingCommands()
+enum UsageMonitorApp {
+    @MainActor
+    static func main() {
+        let application = NSApplication.shared
+        let delegate = AppDelegate()
+        application.delegate = delegate
+        withExtendedLifetime(delegate) {
+            application.run()
         }
     }
 }
@@ -27,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         UsageDefaultsMigration.migrateStandardDefaultsFromLegacyBundleIfNeeded()
         NSApp.setActivationPolicy(.accessory)
+        NSApp.mainMenu = StandardEditMenu.makeMainMenu()
         let monitor = UsageSnapshotMonitor()
         let serviceStatusMonitor = ServiceStatusMonitor()
         self.monitor = monitor
