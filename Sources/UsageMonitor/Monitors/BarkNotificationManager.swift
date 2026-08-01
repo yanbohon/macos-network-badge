@@ -8,12 +8,16 @@ final class BarkNotificationManager: ObservableObject, ServiceStatusNotification
     static let defaultAvailableNotification = BarkNotificationTemplate(
         clickURLText: "",
         title: "服务状态",
-        body: "{{model}} 服务恢复可用\n当前状态：{{status}}\n延迟：{{latency}} ms"
+        body: "\(BarkNotificationTemplateVariable.model.token) 服务恢复可用\n"
+            + "当前状态：\(BarkNotificationTemplateVariable.status.token)\n"
+            + "延迟：\(BarkNotificationTemplateVariable.latency.token) ms"
     )
     static let defaultUnavailableNotification = BarkNotificationTemplate(
         clickURLText: "",
         title: "服务状态",
-        body: "{{model}} 服务不可用\n当前状态：失败\n错误：{{error}}"
+        body: "\(BarkNotificationTemplateVariable.model.token) 服务不可用\n"
+            + "当前状态：失败\n"
+            + "错误：\(BarkNotificationTemplateVariable.error.token)"
     )
 
     enum DefaultsKey {
@@ -305,25 +309,25 @@ final class BarkNotificationManager: ObservableObject, ServiceStatusNotification
     }
 
     private func render(_ template: String, for change: ServiceStatusChange) -> String {
-        let replacements: [(token: String, value: String?)] = [
-            ("{{group}}", notificationTitle),
-            ("{{model}}", change.model.rawValue),
-            ("{{status}}", statusText(for: change.cellKind)),
-            ("{{latency}}", change.probe.latencyMS.map(String.init)),
-            ("{{error}}", normalizedOptionalText(change.probe.error ?? "")),
+        let replacements: [(variable: BarkNotificationTemplateVariable, value: String?)] = [
+            (.group, notificationTitle),
+            (.model, change.model.rawValue),
+            (.status, statusText(for: change.cellKind)),
+            (.latency, change.probe.latencyMS.map(String.init)),
+            (.error, normalizedOptionalText(change.probe.error ?? "")),
         ]
 
         return template
             .components(separatedBy: "\n")
             .filter { line in
                 !replacements.contains { replacement in
-                    replacement.value == nil && line.contains(replacement.token)
+                    replacement.value == nil && line.contains(replacement.variable.token)
                 }
             }
             .map { line in
                 replacements.reduce(line) { rendered, replacement in
                     rendered.replacingOccurrences(
-                        of: replacement.token,
+                        of: replacement.variable.token,
                         with: replacement.value ?? ""
                     )
                 }

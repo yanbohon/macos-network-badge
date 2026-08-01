@@ -54,6 +54,22 @@ struct BarkNotificationTemplate: Codable, Equatable {
     var body: String
 }
 
+enum BarkNotificationTemplateVariable: String, CaseIterable {
+    case group
+    case model
+    case status
+    case latency
+    case error
+
+    var token: String {
+        "{{\(rawValue)}}"
+    }
+
+    static var helpText: String {
+        "可用变量：" + allCases.map(\.token).joined(separator: "、")
+    }
+}
+
 enum BarkServiceNotificationKind: String {
     case available
     case unavailable

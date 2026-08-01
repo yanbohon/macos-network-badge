@@ -1015,7 +1015,7 @@ struct NotificationSettingsPage: View {
     }
 
     private var templateHelpText: String {
-        "可用变量：{{group}}、{{model}}、{{status}}、{{latency}}、{{error}}"
+        BarkNotificationTemplateVariable.helpText
     }
 }
 
