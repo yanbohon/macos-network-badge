@@ -11,13 +11,13 @@ enum BarkNotificationLevel: String, CaseIterable, Identifiable {
     var displayName: String {
         switch self {
         case .active:
-            return "立即"
+            return "默认"
         case .timeSensitive:
-            return "时效"
+            return "即时"
         case .passive:
             return "静默"
         case .critical:
-            return "警告"
+            return "重要"
         }
     }
 
@@ -37,13 +37,13 @@ enum BarkNotificationLevel: String, CaseIterable, Identifiable {
     var helpText: String {
         switch self {
         case .active:
-            return "立即提醒"
+            return "默认通知"
         case .timeSensitive:
-            return "时效性通知"
+            return "即时通知"
         case .passive:
             return "静默通知"
         case .critical:
-            return "重要警告"
+            return "重要通知"
         }
     }
 }
