@@ -33,14 +33,13 @@ final class BarkNotificationManagerTests: XCTestCase {
         manager.level = .critical
         manager.criticalVolume = 8
         manager.group = "模型监控"
-        manager.iconURLText = "https://example.com/icon.png"
         manager.availableNotification = BarkNotificationTemplate(
-            clickURLText: "https://status.example.com/recovery",
+            iconURLText: "https://example.com/available.png",
             title: "恢复标题",
             body: "恢复内容"
         )
         manager.unavailableNotification = BarkNotificationTemplate(
-            clickURLText: "https://status.example.com/outage",
+            iconURLText: "https://example.com/unavailable.png",
             title: "中断标题",
             body: "中断内容"
         )
@@ -56,7 +55,6 @@ final class BarkNotificationManagerTests: XCTestCase {
         XCTAssertEqual(restored.level, .critical)
         XCTAssertEqual(restored.criticalVolume, 8)
         XCTAssertEqual(restored.group, "模型监控")
-        XCTAssertEqual(restored.iconURLText, "https://example.com/icon.png")
         XCTAssertEqual(restored.availableNotification, manager.availableNotification)
         XCTAssertEqual(restored.unavailableNotification, manager.unavailableNotification)
     }
@@ -89,9 +87,8 @@ final class BarkNotificationManagerTests: XCTestCase {
         manager.level = .critical
         manager.criticalVolume = 8
         manager.group = "模型监控"
-        manager.iconURLText = "https://example.com/icon.png"
         manager.unavailableNotification = BarkNotificationTemplate(
-            clickURLText: " https://status.example.com/incidents/42 ",
+            iconURLText: " https://example.com/unavailable.png ",
             title: "模型服务中断",
             body: "{{model}} 已中断\n错误：{{error}}"
         )
@@ -121,16 +118,15 @@ final class BarkNotificationManagerTests: XCTestCase {
             RecordedBarkDelivery(
                 message: BarkNotificationMessage(
                     title: "模型服务中断",
-                    body: "gpt-5.6-sol 已中断\n错误：timeout",
-                    clickURL: "https://status.example.com/incidents/42"
+                    body: "gpt-5.6-sol 已中断 错误：timeout",
+                    iconURL: "https://example.com/unavailable.png"
                 ),
                 configuration: BarkNotificationConfiguration(
                     serverURL: URL(string: "https://push.example.com/base")!,
                     deviceKey: "device-key",
                     level: .critical,
                     volume: 8,
-                    group: "模型监控",
-                    iconURL: "https://example.com/icon.png"
+                    group: "模型监控"
                 )
             ),
         ])
@@ -144,7 +140,7 @@ final class BarkNotificationManagerTests: XCTestCase {
         )
         manager.deviceKey = "device-key"
         manager.availableNotification = BarkNotificationTemplate(
-            clickURLText: "https://status.example.com",
+            iconURLText: "https://example.com/available.png",
             title: "模型服务恢复",
             body: "{{model}} 已恢复\n状态：{{status}}\n耗时：{{latency}} ms"
         )
@@ -172,13 +168,13 @@ final class BarkNotificationManagerTests: XCTestCase {
         XCTAssertEqual(deliveries.map(\.message), [
             BarkNotificationMessage(
                 title: "模型服务恢复",
-                body: "gpt-5.5 已恢复\n状态：高延迟\n耗时：3500 ms",
-                clickURL: "https://status.example.com"
+                body: "gpt-5.5 已恢复 状态：高延迟 耗时：3500 ms",
+                iconURL: "https://example.com/available.png"
             ),
         ])
     }
 
-    func testDefaultUnavailableNotificationOmitsMissingErrorLine() async {
+    func testDefaultUnavailableNotificationUsesOneLineModelStatusContent() async {
         let sender = RecordingBarkNotificationSender()
         let manager = BarkNotificationManager(
             userDefaults: Self.makeDefaults(),
@@ -209,9 +205,61 @@ final class BarkNotificationManagerTests: XCTestCase {
         XCTAssertEqual(deliveries.map(\.message), [
             BarkNotificationMessage(
                 title: "服务状态",
-                body: "gpt-5.5 服务不可用\n当前状态：失败"
+                body: "gpt-5.5 服务不可用"
             ),
         ])
+    }
+
+    func testDefaultAvailableNotificationUsesOneLineModelStatusContent() async {
+        let sender = RecordingBarkNotificationSender()
+        let manager = BarkNotificationManager(
+            userDefaults: Self.makeDefaults(),
+            client: sender
+        )
+        manager.deviceKey = "device-key"
+
+        await manager.sendTestNotification(
+            for: .available,
+            model: .gpt55,
+            probe: ServiceStatusProbe(
+                ts: 15,
+                ok: true,
+                latencyMS: 3_500,
+                error: nil
+            )
+        )
+
+        let deliveries = await sender.deliveries()
+        XCTAssertEqual(deliveries.map(\.message), [
+            BarkNotificationMessage(
+                title: "服务状态",
+                body: "gpt-5.5 服务恢复可用"
+            ),
+        ])
+    }
+
+    func testLegacyClickURLTemplateKeepsTextWithoutUsingURLAsIcon() {
+        let defaults = Self.makeDefaults()
+        defaults.set(
+            Data(
+                #"{"clickURLText":"https://status.example.com","title":"旧标题","body":"旧内容"}"#.utf8
+            ),
+            forKey: BarkNotificationManager.DefaultsKey.availableNotification
+        )
+
+        let manager = BarkNotificationManager(
+            userDefaults: defaults,
+            client: RecordingBarkNotificationSender()
+        )
+
+        XCTAssertEqual(
+            manager.availableNotification,
+            BarkNotificationTemplate(
+                iconURLText: "",
+                title: "旧标题",
+                body: "旧内容"
+            )
+        )
     }
 
     func testDisabledNotificationDoesNotSendStatusChange() async {
@@ -269,7 +317,7 @@ final class BarkNotificationManagerTests: XCTestCase {
         )
         manager.deviceKey = "device-key"
         manager.availableNotification = BarkNotificationTemplate(
-            clickURLText: "https://status.example.com/recovered",
+            iconURLText: "https://example.com/available-test.png",
             title: "服务恢复",
             body: "{{model}}：{{status}}（{{latency}} ms）"
         )
@@ -290,7 +338,7 @@ final class BarkNotificationManagerTests: XCTestCase {
             BarkNotificationMessage(
                 title: "服务恢复",
                 body: "gpt-5.5：高延迟（3500 ms）",
-                clickURL: "https://status.example.com/recovered"
+                iconURL: "https://example.com/available-test.png"
             ),
         ])
         XCTAssertEqual(manager.deliveryState, .success("测试通知已发送"))
@@ -304,7 +352,7 @@ final class BarkNotificationManagerTests: XCTestCase {
         )
         manager.deviceKey = "device-key"
         manager.unavailableNotification = BarkNotificationTemplate(
-            clickURLText: "https://status.example.com/outage",
+            iconURLText: "https://example.com/unavailable-test.png",
             title: "服务中断",
             body: "{{model}}：{{status}}\n{{error}}"
         )
@@ -319,8 +367,8 @@ final class BarkNotificationManagerTests: XCTestCase {
         XCTAssertEqual(deliveries.map(\.message), [
             BarkNotificationMessage(
                 title: "服务中断",
-                body: "gpt-5.6-terra：失败\n连接超时",
-                clickURL: "https://status.example.com/outage"
+                body: "gpt-5.6-terra：失败 连接超时",
+                iconURL: "https://example.com/unavailable-test.png"
             ),
         ])
     }

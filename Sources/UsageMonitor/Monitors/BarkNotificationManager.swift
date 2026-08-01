@@ -6,18 +6,14 @@ final class BarkNotificationManager: ObservableObject, ServiceStatusNotification
     static let defaultServerURLText = "https://api.day.app"
     static let defaultGroup = "服务状态"
     static let defaultAvailableNotification = BarkNotificationTemplate(
-        clickURLText: "",
+        iconURLText: "",
         title: "服务状态",
-        body: "\(BarkNotificationTemplateVariable.model.token) 服务恢复可用\n"
-            + "当前状态：\(BarkNotificationTemplateVariable.status.token)\n"
-            + "延迟：\(BarkNotificationTemplateVariable.latency.token) ms"
+        body: "\(BarkNotificationTemplateVariable.model.token) 服务恢复可用"
     )
     static let defaultUnavailableNotification = BarkNotificationTemplate(
-        clickURLText: "",
+        iconURLText: "",
         title: "服务状态",
-        body: "\(BarkNotificationTemplateVariable.model.token) 服务不可用\n"
-            + "当前状态：失败\n"
-            + "错误：\(BarkNotificationTemplateVariable.error.token)"
+        body: "\(BarkNotificationTemplateVariable.model.token) 服务不可用"
     )
 
     enum DefaultsKey {
@@ -27,7 +23,6 @@ final class BarkNotificationManager: ObservableObject, ServiceStatusNotification
         static let level = "notification.bark.level"
         static let criticalVolume = "notification.bark.criticalVolume"
         static let group = "notification.bark.group"
-        static let iconURL = "notification.bark.iconURL"
         static let availableNotification = "notification.bark.availableNotification"
         static let unavailableNotification = "notification.bark.unavailableNotification"
     }
@@ -89,13 +84,6 @@ final class BarkNotificationManager: ObservableObject, ServiceStatusNotification
         }
     }
 
-    @Published var iconURLText: String {
-        didSet {
-            configurationDidChange()
-            persistOptionalText(iconURLText, forKey: DefaultsKey.iconURL)
-        }
-    }
-
     @Published var unavailableNotification: BarkNotificationTemplate {
         didSet {
             configurationDidChange()
@@ -137,7 +125,6 @@ final class BarkNotificationManager: ObservableObject, ServiceStatusNotification
             ?? .active
         criticalVolume = min(max(savedVolume, 0), 10)
         group = userDefaults.string(forKey: DefaultsKey.group) ?? Self.defaultGroup
-        iconURLText = userDefaults.string(forKey: DefaultsKey.iconURL) ?? ""
         unavailableNotification = Self.savedTemplate(
             forKey: DefaultsKey.unavailableNotification,
             in: userDefaults,
@@ -211,8 +198,7 @@ final class BarkNotificationManager: ObservableObject, ServiceStatusNotification
             deviceKey: trimmedKey,
             level: level,
             volume: level == .critical ? criticalVolume : nil,
-            group: normalizedGroup,
-            iconURL: normalizedOptionalText(iconURLText)
+            group: normalizedGroup
         )
     }
 
@@ -303,9 +289,17 @@ final class BarkNotificationManager: ObservableObject, ServiceStatusNotification
     ) -> BarkNotificationMessage {
         BarkNotificationMessage(
             title: render(template.title, for: change),
-            body: render(template.body, for: change),
-            clickURL: normalizedOptionalText(template.clickURLText)
+            body: oneLine(render(template.body, for: change)),
+            iconURL: normalizedOptionalText(template.iconURLText)
         )
+    }
+
+    private func oneLine(_ value: String) -> String {
+        value
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
     }
 
     private func render(_ template: String, for change: ServiceStatusChange) -> String {
@@ -355,14 +349,6 @@ final class BarkNotificationManager: ObservableObject, ServiceStatusNotification
 
     private func configurationDidChange() {
         deliveryState = .idle
-    }
-
-    private func persistOptionalText(_ value: String, forKey key: String) {
-        if value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            userDefaults.removeObject(forKey: key)
-        } else {
-            userDefaults.set(value, forKey: key)
-        }
     }
 
     private func persist(_ template: BarkNotificationTemplate, forKey key: String) {

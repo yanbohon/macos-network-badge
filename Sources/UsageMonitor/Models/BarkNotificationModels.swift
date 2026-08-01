@@ -49,9 +49,28 @@ enum BarkNotificationLevel: String, CaseIterable, Identifiable {
 }
 
 struct BarkNotificationTemplate: Codable, Equatable {
-    var clickURLText: String
+    var iconURLText: String
     var title: String
     var body: String
+
+    private enum CodingKeys: String, CodingKey {
+        case iconURLText
+        case title
+        case body
+    }
+
+    init(iconURLText: String, title: String, body: String) {
+        self.iconURLText = iconURLText
+        self.title = title
+        self.body = body
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        iconURLText = try container.decodeIfPresent(String.self, forKey: .iconURLText) ?? ""
+        title = try container.decode(String.self, forKey: .title)
+        body = try container.decode(String.self, forKey: .body)
+    }
 }
 
 enum BarkNotificationTemplateVariable: String, CaseIterable {
@@ -87,12 +106,16 @@ enum BarkServiceNotificationKind: String {
 struct BarkNotificationMessage: Equatable {
     let title: String
     let body: String
-    let clickURL: String?
+    let iconURL: String?
 
-    init(title: String, body: String, clickURL: String? = nil) {
+    init(
+        title: String,
+        body: String,
+        iconURL: String? = nil
+    ) {
         self.title = title
         self.body = body
-        self.clickURL = clickURL
+        self.iconURL = iconURL
     }
 }
 
@@ -102,7 +125,6 @@ struct BarkNotificationConfiguration: Equatable {
     let level: BarkNotificationLevel
     let volume: Int?
     let group: String?
-    let iconURL: String?
 }
 
 enum BarkNotificationDeliveryState: Equatable {

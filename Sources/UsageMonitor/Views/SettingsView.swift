@@ -855,13 +855,6 @@ struct NotificationSettingsPage: View {
                         text: $manager.group
                     )
                 }
-
-                SettingsRow("图标 URL") {
-                    notificationTextField(
-                        placeholder: "https://example.com/icon.png",
-                        text: $manager.iconURLText
-                    )
-                }
             }
 
             notificationSection(
@@ -893,10 +886,10 @@ struct NotificationSettingsPage: View {
         template: Binding<BarkNotificationTemplate>
     ) -> some View {
         SettingsSectionLayout(kind.displayName) {
-            SettingsRow("跳转 URL") {
+            SettingsRow("图标 URL") {
                 notificationTextField(
-                    placeholder: "https://example.com",
-                    text: template.clickURLText
+                    placeholder: "https://example.com/icon.png",
+                    text: template.iconURLText
                 )
             }
 
@@ -908,8 +901,11 @@ struct NotificationSettingsPage: View {
                 .help(templateHelpText)
             }
 
-            SettingsRow("内容", alignment: .top) {
-                notificationTextEditor(text: template.body)
+            SettingsRow("内容") {
+                notificationTextField(
+                    placeholder: "{{model}} 服务状态变化",
+                    text: template.body
+                )
                     .help(templateHelpText)
             }
 
@@ -987,31 +983,6 @@ struct NotificationSettingsPage: View {
             secure: false
         )
         .frame(width: 280, height: 22)
-    }
-
-    private func notificationTextEditor(text: Binding<String>) -> some View {
-        ZStack(alignment: .topLeading) {
-            if text.wrappedValue.isEmpty {
-                Text("输入通知内容")
-                    .font(.body)
-                    .foregroundStyle(.tertiary)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 8)
-                    .allowsHitTesting(false)
-            }
-
-            TextEditor(text: text)
-                .font(.body)
-                .scrollContentBackground(.hidden)
-                .padding(4)
-        }
-        .frame(width: 280, height: 72)
-        .background(Color(nsColor: .textBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 5))
-        .overlay {
-            RoundedRectangle(cornerRadius: 5)
-                .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-        }
     }
 
     private var templateHelpText: String {

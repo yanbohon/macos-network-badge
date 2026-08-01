@@ -15,15 +15,14 @@ final class BarkNotificationClientTests: XCTestCase {
             deviceKey: "device-key",
             level: .critical,
             volume: 7,
-            group: "服务状态",
-            iconURL: "https://example.com/icon.png"
+            group: "服务状态"
         )
 
         try await client.send(
             BarkNotificationMessage(
                 title: "gpt-5.6-sol 服务不可用",
                 body: "最新状态：失败",
-                clickURL: "https://status.example.com/incidents/42"
+                iconURL: "https://example.com/unavailable.png"
             ),
             configuration: configuration
         )
@@ -45,8 +44,8 @@ final class BarkNotificationClientTests: XCTestCase {
         XCTAssertEqual(json["volume"] as? Int, 7)
         XCTAssertEqual(json["group"] as? String, "服务状态")
         XCTAssertNil(json["sound"])
-        XCTAssertEqual(json["icon"] as? String, "https://example.com/icon.png")
-        XCTAssertEqual(json["url"] as? String, "https://status.example.com/incidents/42")
+        XCTAssertEqual(json["icon"] as? String, "https://example.com/unavailable.png")
+        XCTAssertNil(json["url"])
     }
 
     func testHTTPFailurePreservesResponseMessageWithoutBarkCode() async throws {
@@ -94,8 +93,7 @@ final class BarkNotificationClientTests: XCTestCase {
         deviceKey: "device-key",
         level: .active,
         volume: nil,
-        group: nil,
-        iconURL: nil
+        group: nil
     )
 }
 
