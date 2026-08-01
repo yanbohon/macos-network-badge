@@ -843,6 +843,13 @@ struct NotificationSettingsPage: View {
             }
 
             SettingsSectionLayout("验证") {
+                SettingsRow("通知标题") {
+                    notificationTextField(
+                        placeholder: BarkNotificationManager.defaultTestTitle,
+                        text: $manager.testTitle
+                    )
+                }
+
                 SettingsRow("通知内容") {
                     notificationTextField(
                         placeholder: BarkNotificationManager.defaultTestContent,

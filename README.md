@@ -28,7 +28,7 @@ swift run UsageMonitor
 
 Open settings from the menu bar, enter the sub2api root URL and API Key, then click `验证并刷新`. The display section lets you choose whether the menu bar shows decimal places.
 
-To enable Bark, open the `通知` tab and enter the Bark Key first. The page also supports a custom Bark server, notification level, critical-alert volume, group, and icon URL. Edit the prefilled notification content and use `发送测试通知` to validate the request parameters.
+To enable Bark, open the `通知` tab and enter the Bark Key first. The page also supports a custom Bark server, notification level, critical-alert volume, group, and icon URL. Edit the prefilled notification title and content, then use `发送测试通知` to validate the request parameters.
 
 ## Configuration
 

@@ -5,6 +5,7 @@ import Foundation
 final class BarkNotificationManager: ObservableObject, ServiceStatusNotificationSinking {
     static let defaultServerURLText = "https://api.day.app"
     static let defaultGroup = "服务状态"
+    static let defaultTestTitle = "用量监控 Bark 通知测试"
     static let defaultTestContent = "Bark 通知配置成功"
 
     enum DefaultsKey {
@@ -15,6 +16,7 @@ final class BarkNotificationManager: ObservableObject, ServiceStatusNotification
         static let criticalVolume = "notification.bark.criticalVolume"
         static let group = "notification.bark.group"
         static let iconURL = "notification.bark.iconURL"
+        static let testTitle = "notification.bark.testTitle"
         static let testContent = "notification.bark.testContent"
     }
 
@@ -82,6 +84,13 @@ final class BarkNotificationManager: ObservableObject, ServiceStatusNotification
         }
     }
 
+    @Published var testTitle: String {
+        didSet {
+            configurationDidChange()
+            userDefaults.set(testTitle, forKey: DefaultsKey.testTitle)
+        }
+    }
+
     @Published var testContent: String {
         didSet {
             configurationDidChange()
@@ -117,6 +126,8 @@ final class BarkNotificationManager: ObservableObject, ServiceStatusNotification
         criticalVolume = min(max(savedVolume, 0), 10)
         group = userDefaults.string(forKey: DefaultsKey.group) ?? Self.defaultGroup
         iconURLText = userDefaults.string(forKey: DefaultsKey.iconURL) ?? ""
+        testTitle = userDefaults.string(forKey: DefaultsKey.testTitle)
+            ?? Self.defaultTestTitle
         testContent = userDefaults.string(forKey: DefaultsKey.testContent)
             ?? Self.defaultTestContent
     }
@@ -149,7 +160,7 @@ final class BarkNotificationManager: ObservableObject, ServiceStatusNotification
 
         await deliver(
             BarkNotificationMessage(
-                title: "用量监控 Bark 通知测试",
+                title: testTitle,
                 body: testContent
             ),
             configuration: configuration,

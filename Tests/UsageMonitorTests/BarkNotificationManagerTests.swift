@@ -34,6 +34,7 @@ final class BarkNotificationManagerTests: XCTestCase {
         manager.criticalVolume = 8
         manager.group = "模型监控"
         manager.iconURLText = "https://example.com/icon.png"
+        manager.testTitle = "保留的测试标题"
         manager.testContent = "保留的测试内容"
 
         let restored = BarkNotificationManager(
@@ -48,6 +49,7 @@ final class BarkNotificationManagerTests: XCTestCase {
         XCTAssertEqual(restored.criticalVolume, 8)
         XCTAssertEqual(restored.group, "模型监控")
         XCTAssertEqual(restored.iconURLText, "https://example.com/icon.png")
+        XCTAssertEqual(restored.testTitle, "保留的测试标题")
         XCTAssertEqual(restored.testContent, "保留的测试内容")
     }
 
@@ -223,13 +225,14 @@ final class BarkNotificationManagerTests: XCTestCase {
         XCTAssertEqual(manager.deliveryState, .success("测试通知已发送"))
     }
 
-    func testSendingTestNotificationUsesCustomContent() async {
+    func testSendingTestNotificationUsesCustomTitleAndContent() async {
         let sender = RecordingBarkNotificationSender()
         let manager = BarkNotificationManager(
             userDefaults: Self.makeDefaults(),
             client: sender
         )
         manager.deviceKey = "device-key"
+        manager.testTitle = "自定义 Bark 测试标题"
         manager.testContent = "自定义 Bark 测试内容"
 
         await manager.sendTestNotification()
@@ -237,7 +240,7 @@ final class BarkNotificationManagerTests: XCTestCase {
         let deliveries = await sender.deliveries()
         XCTAssertEqual(deliveries.map(\.message), [
             BarkNotificationMessage(
-                title: "用量监控 Bark 通知测试",
+                title: "自定义 Bark 测试标题",
                 body: "自定义 Bark 测试内容"
             ),
         ])
