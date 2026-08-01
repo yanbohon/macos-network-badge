@@ -34,7 +34,6 @@ final class BarkNotificationManagerTests: XCTestCase {
         manager.criticalVolume = 8
         manager.group = "模型监控"
         manager.iconURLText = "https://example.com/icon.png"
-        manager.testTitle = "保留的测试标题"
         manager.testContent = "保留的测试内容"
 
         let restored = BarkNotificationManager(
@@ -49,7 +48,6 @@ final class BarkNotificationManagerTests: XCTestCase {
         XCTAssertEqual(restored.criticalVolume, 8)
         XCTAssertEqual(restored.group, "模型监控")
         XCTAssertEqual(restored.iconURLText, "https://example.com/icon.png")
-        XCTAssertEqual(restored.testTitle, "保留的测试标题")
         XCTAssertEqual(restored.testContent, "保留的测试内容")
     }
 
@@ -107,8 +105,8 @@ final class BarkNotificationManagerTests: XCTestCase {
         XCTAssertEqual(deliveries, [
             RecordedBarkDelivery(
                 message: BarkNotificationMessage(
-                    title: "gpt-5.6-sol 服务不可用",
-                    body: "当前状态：失败\n错误：timeout"
+                    title: "模型监控",
+                    body: "gpt-5.6-sol 服务不可用\n当前状态：失败\n错误：timeout"
                 ),
                 configuration: BarkNotificationConfiguration(
                     serverURL: URL(string: "https://push.example.com/base")!,
@@ -152,8 +150,8 @@ final class BarkNotificationManagerTests: XCTestCase {
         let deliveries = await sender.deliveries()
         XCTAssertEqual(deliveries.map(\.message), [
             BarkNotificationMessage(
-                title: "gpt-5.5 服务恢复可用",
-                body: "当前状态：高延迟\n延迟：3500 ms"
+                title: "服务状态",
+                body: "gpt-5.5 服务恢复可用\n当前状态：高延迟\n延迟：3500 ms"
             ),
         ])
     }
@@ -218,21 +216,21 @@ final class BarkNotificationManagerTests: XCTestCase {
         let deliveries = await sender.deliveries()
         XCTAssertEqual(deliveries.map(\.message), [
             BarkNotificationMessage(
-                title: "用量监控 Bark 通知测试",
+                title: "服务状态",
                 body: "Bark 通知配置成功"
             ),
         ])
         XCTAssertEqual(manager.deliveryState, .success("测试通知已发送"))
     }
 
-    func testSendingTestNotificationUsesCustomTitleAndContent() async {
+    func testSendingTestNotificationUsesGroupAsTitleAndCustomContent() async {
         let sender = RecordingBarkNotificationSender()
         let manager = BarkNotificationManager(
             userDefaults: Self.makeDefaults(),
             client: sender
         )
         manager.deviceKey = "device-key"
-        manager.testTitle = "自定义 Bark 测试标题"
+        manager.group = "模型监控"
         manager.testContent = "自定义 Bark 测试内容"
 
         await manager.sendTestNotification()
@@ -240,7 +238,7 @@ final class BarkNotificationManagerTests: XCTestCase {
         let deliveries = await sender.deliveries()
         XCTAssertEqual(deliveries.map(\.message), [
             BarkNotificationMessage(
-                title: "自定义 Bark 测试标题",
+                title: "模型监控",
                 body: "自定义 Bark 测试内容"
             ),
         ])

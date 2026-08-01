@@ -5,7 +5,6 @@ import Foundation
 final class BarkNotificationManager: ObservableObject, ServiceStatusNotificationSinking {
     static let defaultServerURLText = "https://api.day.app"
     static let defaultGroup = "服务状态"
-    static let defaultTestTitle = "用量监控 Bark 通知测试"
     static let defaultTestContent = "Bark 通知配置成功"
 
     enum DefaultsKey {
@@ -16,7 +15,6 @@ final class BarkNotificationManager: ObservableObject, ServiceStatusNotification
         static let criticalVolume = "notification.bark.criticalVolume"
         static let group = "notification.bark.group"
         static let iconURL = "notification.bark.iconURL"
-        static let testTitle = "notification.bark.testTitle"
         static let testContent = "notification.bark.testContent"
     }
 
@@ -84,13 +82,6 @@ final class BarkNotificationManager: ObservableObject, ServiceStatusNotification
         }
     }
 
-    @Published var testTitle: String {
-        didSet {
-            configurationDidChange()
-            userDefaults.set(testTitle, forKey: DefaultsKey.testTitle)
-        }
-    }
-
     @Published var testContent: String {
         didSet {
             configurationDidChange()
@@ -126,8 +117,6 @@ final class BarkNotificationManager: ObservableObject, ServiceStatusNotification
         criticalVolume = min(max(savedVolume, 0), 10)
         group = userDefaults.string(forKey: DefaultsKey.group) ?? Self.defaultGroup
         iconURLText = userDefaults.string(forKey: DefaultsKey.iconURL) ?? ""
-        testTitle = userDefaults.string(forKey: DefaultsKey.testTitle)
-            ?? Self.defaultTestTitle
         testContent = userDefaults.string(forKey: DefaultsKey.testContent)
             ?? Self.defaultTestContent
     }
@@ -160,7 +149,7 @@ final class BarkNotificationManager: ObservableObject, ServiceStatusNotification
 
         await deliver(
             BarkNotificationMessage(
-                title: testTitle,
+                title: notificationTitle,
                 body: testContent
             ),
             configuration: configuration,
@@ -192,9 +181,17 @@ final class BarkNotificationManager: ObservableObject, ServiceStatusNotification
             deviceKey: trimmedKey,
             level: level,
             volume: level == .critical ? criticalVolume : nil,
-            group: normalizedOptionalText(group),
+            group: normalizedGroup,
             iconURL: normalizedOptionalText(iconURLText)
         )
+    }
+
+    private var normalizedGroup: String? {
+        normalizedOptionalText(group)
+    }
+
+    private var notificationTitle: String {
+        normalizedGroup ?? ""
     }
 
     private var normalizedServerURL: URL? {
@@ -216,22 +213,28 @@ final class BarkNotificationManager: ObservableObject, ServiceStatusNotification
     private func message(for change: ServiceStatusChange) -> BarkNotificationMessage {
         switch change.availability {
         case .unavailable:
-            var lines = ["当前状态：失败"]
+            var lines = [
+                "\(change.model.rawValue) 服务不可用",
+                "当前状态：失败",
+            ]
             if let error = normalizedOptionalText(change.probe.error ?? "") {
                 lines.append("错误：\(error)")
             }
             return BarkNotificationMessage(
-                title: "\(change.model.rawValue) 服务不可用",
+                title: notificationTitle,
                 body: lines.joined(separator: "\n")
             )
         case .available:
             let status = change.cellKind == .yellow ? "高延迟" : "正常"
-            var lines = ["当前状态：\(status)"]
+            var lines = [
+                "\(change.model.rawValue) 服务恢复可用",
+                "当前状态：\(status)",
+            ]
             if let latencyMS = change.probe.latencyMS {
                 lines.append("延迟：\(latencyMS) ms")
             }
             return BarkNotificationMessage(
-                title: "\(change.model.rawValue) 服务恢复可用",
+                title: notificationTitle,
                 body: lines.joined(separator: "\n")
             )
         }
