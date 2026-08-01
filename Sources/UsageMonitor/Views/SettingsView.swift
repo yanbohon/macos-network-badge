@@ -4,6 +4,7 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject var monitor: UsageSnapshotMonitor
     @ObservedObject var serviceStatusMonitor: ServiceStatusMonitor
+    @ObservedObject var barkNotificationManager: BarkNotificationManager
     private let backgroundUpdateCoordinator: BackgroundUpdateCoordinator
     @State private var draft: SettingsDraft
     @State private var connectionStatus: ConnectionStatus = .idle
@@ -16,10 +17,12 @@ struct SettingsView: View {
     init(
         monitor: UsageSnapshotMonitor,
         serviceStatusMonitor: ServiceStatusMonitor,
+        barkNotificationManager: BarkNotificationManager,
         backgroundUpdateCoordinator: BackgroundUpdateCoordinator
     ) {
         self.monitor = monitor
         self.serviceStatusMonitor = serviceStatusMonitor
+        self.barkNotificationManager = barkNotificationManager
         self.backgroundUpdateCoordinator = backgroundUpdateCoordinator
         _draft = State(initialValue: Self.makeDraft(from: monitor))
         _selectedKeyID = State(initialValue: monitor.usageKeys.first?.id)
@@ -44,6 +47,12 @@ struct SettingsView: View {
                     Label("刷新", systemImage: "arrow.clockwise")
                 }
                 .tag(SettingsTab.refresh)
+
+            notificationPage
+                .tabItem {
+                    Label("通知", systemImage: "bell")
+                }
+                .tag(SettingsTab.notification)
 
             aboutPage
                 .tabItem {
@@ -395,6 +404,10 @@ struct SettingsView: View {
         .padding(24)
     }
 
+    private var notificationPage: some View {
+        NotificationSettingsPage(manager: barkNotificationManager)
+    }
+
     private func formRow<Content: View>(
         _ title: String,
         alignment: VerticalAlignment = .center,
@@ -689,6 +702,7 @@ private enum SettingsTab: Hashable {
     case connection
     case display
     case refresh
+    case notification
     case about
 }
 
@@ -770,6 +784,157 @@ private struct RefreshSettingsPage: View {
         }
         return "\(seconds / 60) 分钟"
     }
+}
+
+struct NotificationSettingsPage: View {
+    @ObservedObject var manager: BarkNotificationManager
+
+    var body: some View {
+        SettingsPageLayout {
+            SettingsSectionLayout("Bark") {
+                SettingsRow("Key") {
+                    notificationTextField(
+                        placeholder: "输入 Bark Key",
+                        text: $manager.deviceKey,
+                        secure: true
+                    )
+                }
+
+                SettingsToggleRow("启用 Bark 通知", isOn: $manager.isEnabled)
+                    .disabled(!manager.hasDeviceKey)
+            }
+
+            SettingsSectionLayout("请求参数") {
+                SettingsRow("服务器") {
+                    notificationTextField(
+                        placeholder: BarkNotificationManager.defaultServerURLText,
+                        text: $manager.serverURLText
+                    )
+                }
+
+                SettingsRow("中断级别") {
+                    Picker("中断级别", selection: $manager.level) {
+                        ForEach(BarkNotificationLevel.allCases) { level in
+                            Text(level.displayName).tag(level)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .frame(width: 150)
+                }
+
+                if manager.level == .critical {
+                    SettingsRow("警告音量") {
+                        Stepper(value: $manager.criticalVolume, in: 0...10) {
+                            Text("\(manager.criticalVolume)")
+                                .monospacedDigit()
+                                .frame(width: 24, alignment: .trailing)
+                        }
+                        .frame(width: 110)
+                    }
+                }
+
+                SettingsRow("分组") {
+                    notificationTextField(
+                        placeholder: BarkNotificationManager.defaultGroup,
+                        text: $manager.group
+                    )
+                }
+
+                SettingsRow("铃声") {
+                    notificationTextField(
+                        placeholder: "Bark 铃声名称",
+                        text: $manager.sound
+                    )
+                }
+
+                SettingsRow("图标 URL") {
+                    notificationTextField(
+                        placeholder: "https://example.com/icon.png",
+                        text: $manager.iconURLText
+                    )
+                }
+
+                SettingsRow("跳转 URL") {
+                    notificationTextField(
+                        placeholder: "https://example.com",
+                        text: $manager.clickURLText
+                    )
+                }
+            }
+
+            SettingsSectionLayout("验证") {
+                SettingsRow("测试通知") {
+                    Button {
+                        Task {
+                            await manager.sendTestNotification()
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            if isSending {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Image(systemName: "paperplane")
+                            }
+                            Text(isSending ? "发送中…" : "发送测试通知")
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!manager.hasDeviceKey || isSending)
+                }
+
+                if let status = deliveryStatus {
+                    Label(status.text, systemImage: status.systemImage)
+                        .font(.caption)
+                        .foregroundStyle(status.color)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+    }
+
+    private var isSending: Bool {
+        manager.deliveryState == .sending
+    }
+
+    private var deliveryStatus: NotificationDeliveryPresentation? {
+        switch manager.deliveryState {
+        case .idle, .sending:
+            return nil
+        case let .success(message):
+            return NotificationDeliveryPresentation(
+                text: message,
+                systemImage: "checkmark.circle.fill",
+                color: .green
+            )
+        case let .failure(message):
+            return NotificationDeliveryPresentation(
+                text: message,
+                systemImage: "xmark.circle.fill",
+                color: .red
+            )
+        }
+    }
+
+    private func notificationTextField(
+        placeholder: String,
+        text: Binding<String>,
+        secure: Bool = false
+    ) -> some View {
+        NativeTextInput(
+            placeholder: placeholder,
+            text: text,
+            secure: secure
+        )
+        .frame(width: 280, height: 22)
+    }
+}
+
+private struct NotificationDeliveryPresentation {
+    let text: String
+    let systemImage: String
+    let color: Color
 }
 
 private struct SettingsPageLayout<Content: View>: View {

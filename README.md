@@ -10,6 +10,7 @@
 - Shows `subscription.daily_usage_usd` in the menu bar, with an option to hide decimal places
 - Shows remaining balance, plan, mode, subscription limits, usage summary, and model stats in the popover
 - Preserves the last successful usage snapshot in memory when refresh fails
+- Monitors the currently selected menu-bar service model and can send Bark notifications when it changes between available and unavailable
 - Checks stable GitHub Releases daily in the background and from settings, then opens the release page when an update is available
 
 ## Requirements
@@ -27,6 +28,8 @@ swift run UsageMonitor
 
 Open settings from the menu bar, enter the sub2api root URL and API Key, then click `验证并刷新`. The display section lets you choose whether the menu bar shows decimal places.
 
+To enable Bark, open the `通知` tab and enter the Bark Key first. The page also supports a custom Bark server, interruption level, critical-alert volume, group, sound, icon URL, and click URL. Use `发送测试通知` to validate the request parameters.
+
 ## Configuration
 
 The Base URL must start with `http://` or `https://` and should be the instance root only. The app removes trailing slashes before saving and always builds the usage path as:
@@ -34,6 +37,8 @@ The Base URL must start with `http://` or `https://` and should be the instance 
 - `/v1/usage`
 
 Refresh intervals are limited to 1, 5, 15, 30, and 60 minutes. The default is 5 minutes.
+
+Bark notifications use JSON `POST <Bark server>/push`. Green and yellow service states are both treated as available; red is unavailable. The first known state establishes a baseline without notifying. Notifications are sent only when the currently selected menu-bar model changes between those two availability states. Selecting another model establishes a new baseline so the selection itself does not generate an alert.
 
 ## Build for Distribution
 

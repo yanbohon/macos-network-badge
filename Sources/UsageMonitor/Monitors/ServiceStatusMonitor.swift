@@ -41,6 +41,10 @@ final class ServiceStatusMonitor: ObservableObject {
     @Published var menuBarModel: ServiceStatusModel {
         didSet {
             userDefaults.set(menuBarModel.rawValue, forKey: DefaultsKey.menuBarModel)
+            if oldValue != menuBarModel {
+                lastObservedModel = nil
+                lastObservedAvailability = nil
+            }
         }
     }
 
@@ -48,23 +52,28 @@ final class ServiceStatusMonitor: ObservableObject {
     private let client: ServiceStatusFetching
     private let timerFactory: RefreshTimerFactory
     private let now: () -> Date
+    private let notificationSink: ServiceStatusNotificationSinking?
     private var refreshTimer: RefreshTimer?
     private var refreshTask: Task<StatusAPIResult, Error>?
     private var isTimerRefreshInFlight = false
     private(set) var activeTimerRefreshCount = 0
     private(set) var peakTimerRefreshCount = 0
     private var hasStarted = false
+    private var lastObservedModel: ServiceStatusModel?
+    private var lastObservedAvailability: ServiceAvailability?
 
     init(
         userDefaults: UserDefaults = .standard,
         client: ServiceStatusFetching = StatusAPIClient(),
         timerFactory: RefreshTimerFactory = FoundationRefreshTimerFactory(),
-        now: @escaping () -> Date = Date.init
+        now: @escaping () -> Date = Date.init,
+        notificationSink: ServiceStatusNotificationSinking? = nil
     ) {
         self.userDefaults = userDefaults
         self.client = client
         self.timerFactory = timerFactory
         self.now = now
+        self.notificationSink = notificationSink
         menuBarModel = userDefaults.string(forKey: DefaultsKey.menuBarModel)
             .flatMap(ServiceStatusModel.init(rawValue:))
             ?? Self.defaultMenuBarModel
@@ -197,9 +206,43 @@ final class ServiceStatusMonitor: ObservableObject {
         }
 
         response = result.response
+        observeSelectedAvailability(in: result.response)
         rawJSONText = result.prettyRawJSON
         lastSuccessfulRefresh = now()
         lastError = nil
+    }
+
+    private func observeSelectedAvailability(in response: ServiceStatusResponse) {
+        guard let probe = response.service(model: menuBarModel.rawValue)?.last else {
+            return
+        }
+        let cellKind = ServiceStatusCellKind.classify(probe)
+        guard let availability = ServiceAvailability(cellKind: cellKind) else { return }
+
+        guard lastObservedModel == menuBarModel else {
+            lastObservedModel = menuBarModel
+            lastObservedAvailability = availability
+            return
+        }
+
+        guard let previousAvailability = lastObservedAvailability else {
+            lastObservedAvailability = availability
+            return
+        }
+
+        if previousAvailability != availability {
+            notificationSink?.serviceStatusDidChange(
+                ServiceStatusChange(
+                    model: menuBarModel,
+                    previousAvailability: previousAvailability,
+                    availability: availability,
+                    cellKind: cellKind,
+                    probe: probe
+                )
+            )
+        }
+
+        lastObservedAvailability = availability
     }
 
     private func applyRefreshFailure(_ error: Error) {

@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import XCTest
 @testable import UsageMonitor
 
@@ -31,6 +32,44 @@ final class SettingsViewRenderingTests: XCTestCase {
 
             let image = renderContent(of: window)
             XCTAssertTrue(hasVisibleContent(in: image), "Expected visible content at size \(size)")
+        }
+    }
+
+    func testNotificationSettingsPageRendersAtDefaultAndMinimumSizes() {
+        let manager = BarkNotificationManager(
+            userDefaults: UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!,
+            client: RecordingBarkNotificationSender()
+        )
+        manager.level = .critical
+        let hostingController = NSHostingController(
+            rootView: ZStack {
+                Color(nsColor: .windowBackgroundColor)
+                    .ignoresSafeArea()
+                NotificationSettingsPage(manager: manager)
+            }
+        )
+        let window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: SettingsWindowController.initialContentSize),
+            styleMask: [.titled, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.appearance = NSAppearance(named: .aqua)
+        window.backgroundColor = .windowBackgroundColor
+        window.isOpaque = true
+        window.contentViewController = hostingController
+
+        for size in [
+            SettingsWindowController.initialContentSize,
+            SettingsWindowController.minimumContentSize,
+        ] {
+            window.setContentSize(size)
+            window.contentView?.layoutSubtreeIfNeeded()
+            hostingController.view.layoutSubtreeIfNeeded()
+
+            let image = renderContent(of: window)
+            XCTAssertTrue(hasVisibleContent(in: image), "Expected notification settings at size \(size)")
+            writeScreenshotIfRequested(image, size: size)
         }
     }
 
@@ -79,6 +118,17 @@ final class SettingsViewRenderingTests: XCTestCase {
         }
 
         return false
+    }
+
+    private func writeScreenshotIfRequested(_ image: NSBitmapImageRep, size: NSSize) {
+        guard
+            let directory = ProcessInfo.processInfo.environment["USAGE_MONITOR_SCREENSHOT_DIR"],
+            let data = image.representation(using: .png, properties: [:])
+        else {
+            return
+        }
+        let filename = "bark-settings-\(Int(size.width))x\(Int(size.height)).png"
+        try? data.write(to: URL(fileURLWithPath: directory).appendingPathComponent(filename))
     }
 }
 

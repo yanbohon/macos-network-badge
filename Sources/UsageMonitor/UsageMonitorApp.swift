@@ -27,8 +27,10 @@ enum UsageMonitorApp {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let startsBackgroundActivities: Bool
     private let backgroundUpdateCoordinator = BackgroundUpdateCoordinator()
+    private lazy var barkNotificationManager = BarkNotificationManager()
     private lazy var settingsWindowController = SettingsWindowController(
-        backgroundUpdateCoordinator: backgroundUpdateCoordinator
+        backgroundUpdateCoordinator: backgroundUpdateCoordinator,
+        barkNotificationManager: barkNotificationManager
     )
     private var monitor: UsageSnapshotMonitor?
     private var serviceStatusMonitor: ServiceStatusMonitor?
@@ -43,7 +45,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         NSApp.mainMenu = StandardEditMenu.makeMainMenu()
         let monitor = UsageSnapshotMonitor()
-        let serviceStatusMonitor = ServiceStatusMonitor()
+        let serviceStatusMonitor = ServiceStatusMonitor(
+            notificationSink: barkNotificationManager
+        )
         self.monitor = monitor
         self.serviceStatusMonitor = serviceStatusMonitor
         statusBarController = StatusBarController(

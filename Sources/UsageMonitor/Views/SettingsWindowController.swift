@@ -8,13 +8,16 @@ final class SettingsWindowController: ObservableObject {
 
     private var window: NSWindow?
     private let backgroundUpdateCoordinator: BackgroundUpdateCoordinator
+    private let barkNotificationManager: BarkNotificationManager
     private let activateApplication: () -> Void
 
     init(
         backgroundUpdateCoordinator: BackgroundUpdateCoordinator? = nil,
+        barkNotificationManager: BarkNotificationManager? = nil,
         activateApplication: (() -> Void)? = nil
     ) {
         self.backgroundUpdateCoordinator = backgroundUpdateCoordinator ?? BackgroundUpdateCoordinator()
+        self.barkNotificationManager = barkNotificationManager ?? BarkNotificationManager()
         self.activateApplication = activateApplication ?? {
             NSApp.activate(ignoringOtherApps: true)
         }
@@ -44,6 +47,7 @@ final class SettingsWindowController: ObservableObject {
         let view = SettingsView(
             monitor: monitor,
             serviceStatusMonitor: serviceStatusMonitor,
+            barkNotificationManager: barkNotificationManager,
             backgroundUpdateCoordinator: backgroundUpdateCoordinator
         )
         let hostingController = NSHostingController(rootView: view)
