@@ -52,6 +52,28 @@ final class StatusBarControllerTests: XCTestCase {
         XCTAssertEqual(popover.contentSize, hostedView.fittingSize)
     }
 
+    func testPopoverPositioningRectUsesVisualBottomEdgeOfFlippedStatusBarButton() {
+        let button = NSStatusBarButton(frame: NSRect(x: 0, y: 0, width: 120, height: 22))
+
+        XCTAssertTrue(button.isFlipped)
+        XCTAssertEqual(
+            StatusBarController.popoverPositioningRect(for: button),
+            NSRect(x: 0, y: button.bounds.maxY, width: button.bounds.width, height: 0)
+        )
+    }
+
+    func testPopoverWindowOriginMovesPopoverBelowMenuBar() {
+        let visibleFrame = NSRect(x: 0, y: 57, width: 1728, height: 1027)
+        let popoverFrame = NSRect(x: 100, y: 883, width: 440, height: 206)
+
+        let origin = StatusBarController.popoverWindowOrigin(
+            for: popoverFrame,
+            constrainedTo: visibleFrame
+        )
+
+        XCTAssertEqual(origin, NSPoint(x: 100, y: 878))
+    }
+
     func testStatusBarTitleUsesLatestStatusAndDisplayTextForAccessibility() {
         let title = StatusBarController.titleText(
             displayText: "$52.58",
