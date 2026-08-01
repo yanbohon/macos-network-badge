@@ -20,7 +20,11 @@ final class BarkNotificationClientTests: XCTestCase {
         )
 
         try await client.send(
-            BarkNotificationMessage(title: "gpt-5.6-sol 服务不可用", body: "最新状态：失败"),
+            BarkNotificationMessage(
+                title: "gpt-5.6-sol 服务不可用",
+                body: "最新状态：失败",
+                clickURL: "https://status.example.com/incidents/42"
+            ),
             configuration: configuration
         )
 
@@ -42,7 +46,7 @@ final class BarkNotificationClientTests: XCTestCase {
         XCTAssertEqual(json["group"] as? String, "服务状态")
         XCTAssertNil(json["sound"])
         XCTAssertEqual(json["icon"] as? String, "https://example.com/icon.png")
-        XCTAssertNil(json["url"])
+        XCTAssertEqual(json["url"] as? String, "https://status.example.com/incidents/42")
     }
 
     func testHTTPFailurePreservesResponseMessageWithoutBarkCode() async throws {

@@ -48,9 +48,36 @@ enum BarkNotificationLevel: String, CaseIterable, Identifiable {
     }
 }
 
+struct BarkNotificationTemplate: Codable, Equatable {
+    var clickURLText: String
+    var title: String
+    var body: String
+}
+
+enum BarkServiceNotificationKind: String {
+    case available
+    case unavailable
+
+    var displayName: String {
+        switch self {
+        case .available:
+            return "服务可用通知"
+        case .unavailable:
+            return "服务不可用通知"
+        }
+    }
+}
+
 struct BarkNotificationMessage: Equatable {
     let title: String
     let body: String
+    let clickURL: String?
+
+    init(title: String, body: String, clickURL: String? = nil) {
+        self.title = title
+        self.body = body
+        self.clickURL = clickURL
+    }
 }
 
 struct BarkNotificationConfiguration: Equatable {

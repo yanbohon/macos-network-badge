@@ -35,10 +35,14 @@ final class SettingsViewRenderingTests: XCTestCase {
         }
     }
 
-    func testNotificationSettingsPageRendersAtDefaultAndMinimumSizes() {
+    func testNotificationSettingsPageRendersAtMinimumDefaultAndExpandedSizes() {
         let manager = BarkNotificationManager(
             userDefaults: UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!,
             client: RecordingBarkNotificationSender()
+        )
+        let serviceStatusMonitor = ServiceStatusMonitor(
+            userDefaults: UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!,
+            timerFactory: ManualTimerFactory()
         )
         manager.deviceKey = "bark-test-key"
         manager.level = .critical
@@ -46,7 +50,10 @@ final class SettingsViewRenderingTests: XCTestCase {
             rootView: ZStack {
                 Color(nsColor: .windowBackgroundColor)
                     .ignoresSafeArea()
-                NotificationSettingsPage(manager: manager)
+                NotificationSettingsPage(
+                    manager: manager,
+                    serviceStatusMonitor: serviceStatusMonitor
+                )
             }
         )
         let window = NSWindow(
@@ -63,6 +70,7 @@ final class SettingsViewRenderingTests: XCTestCase {
         for size in [
             SettingsWindowController.initialContentSize,
             SettingsWindowController.minimumContentSize,
+            NSSize(width: 520, height: 1_000),
         ] {
             window.setContentSize(size)
             window.contentView?.layoutSubtreeIfNeeded()

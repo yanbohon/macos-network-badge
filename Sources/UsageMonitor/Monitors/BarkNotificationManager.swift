@@ -5,7 +5,16 @@ import Foundation
 final class BarkNotificationManager: ObservableObject, ServiceStatusNotificationSinking {
     static let defaultServerURLText = "https://api.day.app"
     static let defaultGroup = "服务状态"
-    static let defaultTestContent = "Bark 通知配置成功"
+    static let defaultAvailableNotification = BarkNotificationTemplate(
+        clickURLText: "",
+        title: "服务状态",
+        body: "{{model}} 服务恢复可用\n当前状态：{{status}}\n延迟：{{latency}} ms"
+    )
+    static let defaultUnavailableNotification = BarkNotificationTemplate(
+        clickURLText: "",
+        title: "服务状态",
+        body: "{{model}} 服务不可用\n当前状态：失败\n错误：{{error}}"
+    )
 
     enum DefaultsKey {
         static let deviceKey = "notification.bark.deviceKey"
@@ -15,7 +24,8 @@ final class BarkNotificationManager: ObservableObject, ServiceStatusNotification
         static let criticalVolume = "notification.bark.criticalVolume"
         static let group = "notification.bark.group"
         static let iconURL = "notification.bark.iconURL"
-        static let testContent = "notification.bark.testContent"
+        static let availableNotification = "notification.bark.availableNotification"
+        static let unavailableNotification = "notification.bark.unavailableNotification"
     }
 
     @Published var deviceKey: String {
@@ -82,10 +92,17 @@ final class BarkNotificationManager: ObservableObject, ServiceStatusNotification
         }
     }
 
-    @Published var testContent: String {
+    @Published var unavailableNotification: BarkNotificationTemplate {
         didSet {
             configurationDidChange()
-            userDefaults.set(testContent, forKey: DefaultsKey.testContent)
+            persist(unavailableNotification, forKey: DefaultsKey.unavailableNotification)
+        }
+    }
+
+    @Published var availableNotification: BarkNotificationTemplate {
+        didSet {
+            configurationDidChange()
+            persist(availableNotification, forKey: DefaultsKey.availableNotification)
         }
     }
 
@@ -117,8 +134,16 @@ final class BarkNotificationManager: ObservableObject, ServiceStatusNotification
         criticalVolume = min(max(savedVolume, 0), 10)
         group = userDefaults.string(forKey: DefaultsKey.group) ?? Self.defaultGroup
         iconURLText = userDefaults.string(forKey: DefaultsKey.iconURL) ?? ""
-        testContent = userDefaults.string(forKey: DefaultsKey.testContent)
-            ?? Self.defaultTestContent
+        unavailableNotification = Self.savedTemplate(
+            forKey: DefaultsKey.unavailableNotification,
+            in: userDefaults,
+            defaultValue: Self.defaultUnavailableNotification
+        )
+        availableNotification = Self.savedTemplate(
+            forKey: DefaultsKey.availableNotification,
+            in: userDefaults,
+            defaultValue: Self.defaultAvailableNotification
+        )
     }
 
     func serviceStatusDidChange(_ change: ServiceStatusChange) {
@@ -137,7 +162,11 @@ final class BarkNotificationManager: ObservableObject, ServiceStatusNotification
         }
     }
 
-    func sendTestNotification() async {
+    func sendTestNotification(
+        for kind: BarkServiceNotificationKind,
+        model: ServiceStatusModel,
+        probe: ServiceStatusProbe?
+    ) async {
         guard hasDeviceKey else {
             deliveryState = .failure("请先配置 Bark Key")
             return
@@ -148,10 +177,7 @@ final class BarkNotificationManager: ObservableObject, ServiceStatusNotification
         }
 
         await deliver(
-            BarkNotificationMessage(
-                title: notificationTitle,
-                body: testContent
-            ),
+            message(for: previewChange(for: kind, model: model, probe: probe)),
             configuration: configuration,
             successMessage: "测试通知已发送"
         )
@@ -213,30 +239,108 @@ final class BarkNotificationManager: ObservableObject, ServiceStatusNotification
     private func message(for change: ServiceStatusChange) -> BarkNotificationMessage {
         switch change.availability {
         case .unavailable:
-            var lines = [
-                "\(change.model.rawValue) 服务不可用",
-                "当前状态：失败",
-            ]
-            if let error = normalizedOptionalText(change.probe.error ?? "") {
-                lines.append("错误：\(error)")
-            }
-            return BarkNotificationMessage(
-                title: notificationTitle,
-                body: lines.joined(separator: "\n")
-            )
+            return message(from: unavailableNotification, for: change)
         case .available:
-            let status = change.cellKind == .yellow ? "高延迟" : "正常"
-            var lines = [
-                "\(change.model.rawValue) 服务恢复可用",
-                "当前状态：\(status)",
-            ]
-            if let latencyMS = change.probe.latencyMS {
-                lines.append("延迟：\(latencyMS) ms")
+            return message(from: availableNotification, for: change)
+        }
+    }
+
+    private func previewChange(
+        for kind: BarkServiceNotificationKind,
+        model: ServiceStatusModel,
+        probe: ServiceStatusProbe?
+    ) -> ServiceStatusChange {
+        switch kind {
+        case .available:
+            let previewProbe: ServiceStatusProbe
+            let cellKind = ServiceStatusCellKind.classify(probe)
+            if let probe, cellKind == .green || cellKind == .yellow {
+                previewProbe = probe
+            } else {
+                previewProbe = ServiceStatusProbe(
+                    ts: nil,
+                    ok: true,
+                    latencyMS: 120,
+                    error: nil
+                )
             }
-            return BarkNotificationMessage(
-                title: notificationTitle,
-                body: lines.joined(separator: "\n")
+            return ServiceStatusChange(
+                model: model,
+                previousAvailability: .unavailable,
+                availability: .available,
+                cellKind: ServiceStatusCellKind.classify(previewProbe),
+                probe: previewProbe
             )
+        case .unavailable:
+            let previewProbe: ServiceStatusProbe
+            if let probe, ServiceStatusCellKind.classify(probe) == .red {
+                previewProbe = probe
+            } else {
+                previewProbe = ServiceStatusProbe(
+                    ts: nil,
+                    ok: false,
+                    latencyMS: nil,
+                    error: "连接超时"
+                )
+            }
+            return ServiceStatusChange(
+                model: model,
+                previousAvailability: .available,
+                availability: .unavailable,
+                cellKind: .red,
+                probe: previewProbe
+            )
+        }
+    }
+
+    private func message(
+        from template: BarkNotificationTemplate,
+        for change: ServiceStatusChange
+    ) -> BarkNotificationMessage {
+        BarkNotificationMessage(
+            title: render(template.title, for: change),
+            body: render(template.body, for: change),
+            clickURL: normalizedOptionalText(template.clickURLText)
+        )
+    }
+
+    private func render(_ template: String, for change: ServiceStatusChange) -> String {
+        let replacements: [(token: String, value: String?)] = [
+            ("{{group}}", notificationTitle),
+            ("{{model}}", change.model.rawValue),
+            ("{{status}}", statusText(for: change.cellKind)),
+            ("{{latency}}", change.probe.latencyMS.map(String.init)),
+            ("{{error}}", normalizedOptionalText(change.probe.error ?? "")),
+        ]
+
+        return template
+            .components(separatedBy: "\n")
+            .filter { line in
+                !replacements.contains { replacement in
+                    replacement.value == nil && line.contains(replacement.token)
+                }
+            }
+            .map { line in
+                replacements.reduce(line) { rendered, replacement in
+                    rendered.replacingOccurrences(
+                        of: replacement.token,
+                        with: replacement.value ?? ""
+                    )
+                }
+            }
+            .joined(separator: "\n")
+    }
+
+    private func statusText(for cellKind: ServiceStatusCellKind) -> String {
+        switch cellKind {
+        case .green:
+            return "正常"
+        case .yellow:
+            return "高延迟"
+        case .red:
+            return "失败"
+        case .gray:
+            return "缺少数据"
         }
     }
 
@@ -255,5 +359,24 @@ final class BarkNotificationManager: ObservableObject, ServiceStatusNotification
         } else {
             userDefaults.set(value, forKey: key)
         }
+    }
+
+    private func persist(_ template: BarkNotificationTemplate, forKey key: String) {
+        guard let data = try? JSONEncoder().encode(template) else { return }
+        userDefaults.set(data, forKey: key)
+    }
+
+    private static func savedTemplate(
+        forKey key: String,
+        in userDefaults: UserDefaults,
+        defaultValue: BarkNotificationTemplate
+    ) -> BarkNotificationTemplate {
+        guard
+            let data = userDefaults.data(forKey: key),
+            let template = try? JSONDecoder().decode(BarkNotificationTemplate.self, from: data)
+        else {
+            return defaultValue
+        }
+        return template
     }
 }

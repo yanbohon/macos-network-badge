@@ -405,7 +405,10 @@ struct SettingsView: View {
     }
 
     private var notificationPage: some View {
-        NotificationSettingsPage(manager: barkNotificationManager)
+        NotificationSettingsPage(
+            manager: barkNotificationManager,
+            serviceStatusMonitor: serviceStatusMonitor
+        )
     }
 
     private func formRow<Content: View>(
@@ -788,6 +791,9 @@ private struct RefreshSettingsPage: View {
 
 struct NotificationSettingsPage: View {
     @ObservedObject var manager: BarkNotificationManager
+    @ObservedObject var serviceStatusMonitor: ServiceStatusMonitor
+    @State private var testingKind: BarkServiceNotificationKind?
+    @State private var lastTestedKind: BarkServiceNotificationKind?
 
     var body: some View {
         SettingsPageLayout {
@@ -818,12 +824,28 @@ struct NotificationSettingsPage: View {
 
                 if manager.level == .critical {
                     SettingsRow("警告音量") {
-                        Stepper(value: $manager.criticalVolume, in: 0...10) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "speaker.fill")
+                                .foregroundStyle(.secondary)
+                                .accessibilityHidden(true)
+
+                            Slider(
+                                value: criticalVolumeBinding,
+                                in: 0...10,
+                                step: 1
+                            )
+                            .accessibilityLabel("警告音量")
+                            .accessibilityValue("\(manager.criticalVolume)")
+
+                            Image(systemName: "speaker.wave.3.fill")
+                                .foregroundStyle(.secondary)
+                                .accessibilityHidden(true)
+
                             Text("\(manager.criticalVolume)")
                                 .monospacedDigit()
-                                .frame(width: 24, alignment: .trailing)
+                                .frame(width: 18, alignment: .trailing)
                         }
-                        .frame(width: 110)
+                        .frame(width: 280)
                     }
                 }
 
@@ -842,41 +864,15 @@ struct NotificationSettingsPage: View {
                 }
             }
 
-            SettingsSectionLayout("验证") {
-                SettingsRow("通知内容") {
-                    notificationTextField(
-                        placeholder: BarkNotificationManager.defaultTestContent,
-                        text: $manager.testContent
-                    )
-                }
+            notificationSection(
+                kind: .available,
+                template: $manager.availableNotification
+            )
 
-                SettingsRow("测试通知") {
-                    Button {
-                        Task {
-                            await manager.sendTestNotification()
-                        }
-                    } label: {
-                        HStack(spacing: 6) {
-                            if isSending {
-                                ProgressView()
-                                    .controlSize(.small)
-                            } else {
-                                Image(systemName: "paperplane")
-                            }
-                            Text(isSending ? "发送中…" : "发送测试通知")
-                        }
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(!manager.hasDeviceKey || isSending)
-                }
-
-                if let status = deliveryStatus {
-                    Label(status.text, systemImage: status.systemImage)
-                        .font(.caption)
-                        .foregroundStyle(status.color)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
+            notificationSection(
+                kind: .unavailable,
+                template: $manager.unavailableNotification
+            )
         }
     }
 
@@ -884,7 +880,72 @@ struct NotificationSettingsPage: View {
         manager.deliveryState == .sending
     }
 
-    private var deliveryStatus: NotificationDeliveryPresentation? {
+    private var criticalVolumeBinding: Binding<Double> {
+        Binding(
+            get: { Double(manager.criticalVolume) },
+            set: { manager.criticalVolume = Int($0.rounded()) }
+        )
+    }
+
+    @ViewBuilder
+    private func notificationSection(
+        kind: BarkServiceNotificationKind,
+        template: Binding<BarkNotificationTemplate>
+    ) -> some View {
+        SettingsSectionLayout(kind.displayName) {
+            SettingsRow("跳转 URL") {
+                notificationTextField(
+                    placeholder: "https://example.com",
+                    text: template.clickURLText
+                )
+            }
+
+            SettingsRow("标题") {
+                notificationTextField(
+                    placeholder: "服务状态",
+                    text: template.title
+                )
+                .help(templateHelpText)
+            }
+
+            SettingsRow("内容", alignment: .top) {
+                notificationTextEditor(text: template.body)
+                    .help(templateHelpText)
+            }
+
+            SettingsRow("测试通知", alignment: .top) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Button {
+                        sendTestNotification(for: kind)
+                    } label: {
+                        HStack(spacing: 6) {
+                            if testingKind == kind {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Image(systemName: "paperplane")
+                            }
+                            Text(testingKind == kind ? "发送中…" : "发送测试通知")
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!manager.hasDeviceKey || isSending)
+
+                    if let status = deliveryStatus(for: kind) {
+                        Label(status.text, systemImage: status.systemImage)
+                            .font(.caption)
+                            .foregroundStyle(status.color)
+                    }
+                }
+                .frame(width: 280, alignment: .leading)
+            }
+        }
+    }
+
+    private func deliveryStatus(
+        for kind: BarkServiceNotificationKind
+    ) -> NotificationDeliveryPresentation? {
+        guard lastTestedKind == kind else { return nil }
         switch manager.deliveryState {
         case .idle, .sending:
             return nil
@@ -903,6 +964,19 @@ struct NotificationSettingsPage: View {
         }
     }
 
+    private func sendTestNotification(for kind: BarkServiceNotificationKind) {
+        testingKind = kind
+        lastTestedKind = kind
+        Task {
+            await manager.sendTestNotification(
+                for: kind,
+                model: serviceStatusMonitor.menuBarModel,
+                probe: serviceStatusMonitor.selectedService?.last
+            )
+            testingKind = nil
+        }
+    }
+
     private func notificationTextField(
         placeholder: String,
         text: Binding<String>
@@ -913,6 +987,35 @@ struct NotificationSettingsPage: View {
             secure: false
         )
         .frame(width: 280, height: 22)
+    }
+
+    private func notificationTextEditor(text: Binding<String>) -> some View {
+        ZStack(alignment: .topLeading) {
+            if text.wrappedValue.isEmpty {
+                Text("输入通知内容")
+                    .font(.body)
+                    .foregroundStyle(.tertiary)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 8)
+                    .allowsHitTesting(false)
+            }
+
+            TextEditor(text: text)
+                .font(.body)
+                .scrollContentBackground(.hidden)
+                .padding(4)
+        }
+        .frame(width: 280, height: 72)
+        .background(Color(nsColor: .textBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 5))
+        .overlay {
+            RoundedRectangle(cornerRadius: 5)
+                .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+        }
+    }
+
+    private var templateHelpText: String {
+        "可用变量：{{group}}、{{model}}、{{status}}、{{latency}}、{{error}}"
     }
 }
 
@@ -1020,15 +1123,21 @@ private struct SettingsToggleRow: View {
 
 private struct SettingsRow<Content: View>: View {
     let title: String
+    let alignment: VerticalAlignment
     @ViewBuilder let content: Content
 
-    init(_ title: String, @ViewBuilder content: () -> Content) {
+    init(
+        _ title: String,
+        alignment: VerticalAlignment = .center,
+        @ViewBuilder content: () -> Content
+    ) {
         self.title = title
+        self.alignment = alignment
         self.content = content()
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 16) {
+        HStack(alignment: alignment, spacing: 16) {
             Text(title)
             Spacer(minLength: 20)
             content
