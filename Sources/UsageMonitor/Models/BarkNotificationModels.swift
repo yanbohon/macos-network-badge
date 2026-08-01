@@ -11,11 +11,37 @@ enum BarkNotificationLevel: String, CaseIterable, Identifiable {
     var displayName: String {
         switch self {
         case .active:
-            return "立即提醒"
+            return "立即"
         case .timeSensitive:
-            return "时效性"
+            return "时效"
         case .passive:
             return "静默"
+        case .critical:
+            return "警告"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .active:
+            return "bell.fill"
+        case .timeSensitive:
+            return "clock.badge.exclamationmark"
+        case .passive:
+            return "bell.slash.fill"
+        case .critical:
+            return "exclamationmark.triangle.fill"
+        }
+    }
+
+    var helpText: String {
+        switch self {
+        case .active:
+            return "立即提醒"
+        case .timeSensitive:
+            return "时效性通知"
+        case .passive:
+            return "静默通知"
         case .critical:
             return "重要警告"
         }
@@ -33,9 +59,7 @@ struct BarkNotificationConfiguration: Equatable {
     let level: BarkNotificationLevel
     let volume: Int?
     let group: String?
-    let sound: String?
     let iconURL: String?
-    let clickURL: String?
 }
 
 enum BarkNotificationDeliveryState: Equatable {

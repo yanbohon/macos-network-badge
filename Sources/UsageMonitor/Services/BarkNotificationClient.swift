@@ -45,9 +45,7 @@ final class BarkNotificationClient: BarkNotificationSending {
         let level: String
         let volume: Int?
         let group: String?
-        let sound: String?
         let icon: String?
-        let url: String?
 
         enum CodingKeys: String, CodingKey {
             case deviceKey = "device_key"
@@ -56,9 +54,7 @@ final class BarkNotificationClient: BarkNotificationSending {
             case level
             case volume
             case group
-            case sound
             case icon
-            case url
         }
     }
 
@@ -98,9 +94,7 @@ final class BarkNotificationClient: BarkNotificationSending {
                     level: configuration.level.rawValue,
                     volume: configuration.volume,
                     group: configuration.group,
-                    sound: configuration.sound,
-                    icon: configuration.iconURL,
-                    url: configuration.clickURL
+                    icon: configuration.iconURL
                 )
             )
         } catch {

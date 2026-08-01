@@ -16,9 +16,7 @@ final class BarkNotificationClientTests: XCTestCase {
             level: .critical,
             volume: 7,
             group: "服务状态",
-            sound: "alarm",
-            iconURL: "https://example.com/icon.png",
-            clickURL: "https://status.example.com"
+            iconURL: "https://example.com/icon.png"
         )
 
         try await client.send(
@@ -42,9 +40,9 @@ final class BarkNotificationClientTests: XCTestCase {
         XCTAssertEqual(json["level"] as? String, "critical")
         XCTAssertEqual(json["volume"] as? Int, 7)
         XCTAssertEqual(json["group"] as? String, "服务状态")
-        XCTAssertEqual(json["sound"] as? String, "alarm")
+        XCTAssertNil(json["sound"])
         XCTAssertEqual(json["icon"] as? String, "https://example.com/icon.png")
-        XCTAssertEqual(json["url"] as? String, "https://status.example.com")
+        XCTAssertNil(json["url"])
     }
 
     func testHTTPFailurePreservesResponseMessageWithoutBarkCode() async throws {
@@ -93,9 +91,7 @@ final class BarkNotificationClientTests: XCTestCase {
         level: .active,
         volume: nil,
         group: nil,
-        sound: nil,
-        iconURL: nil,
-        clickURL: nil
+        iconURL: nil
     )
 }
 

@@ -33,9 +33,8 @@ final class BarkNotificationManagerTests: XCTestCase {
         manager.level = .critical
         manager.criticalVolume = 8
         manager.group = "模型监控"
-        manager.sound = "alarm"
         manager.iconURLText = "https://example.com/icon.png"
-        manager.clickURLText = "https://status.example.com"
+        manager.testContent = "保留的测试内容"
 
         let restored = BarkNotificationManager(
             userDefaults: defaults,
@@ -48,9 +47,8 @@ final class BarkNotificationManagerTests: XCTestCase {
         XCTAssertEqual(restored.level, .critical)
         XCTAssertEqual(restored.criticalVolume, 8)
         XCTAssertEqual(restored.group, "模型监控")
-        XCTAssertEqual(restored.sound, "alarm")
         XCTAssertEqual(restored.iconURLText, "https://example.com/icon.png")
-        XCTAssertEqual(restored.clickURLText, "https://status.example.com")
+        XCTAssertEqual(restored.testContent, "保留的测试内容")
     }
 
     func testClearedDefaultGroupRemainsEmptyAfterRestart() {
@@ -81,9 +79,7 @@ final class BarkNotificationManagerTests: XCTestCase {
         manager.level = .critical
         manager.criticalVolume = 8
         manager.group = "模型监控"
-        manager.sound = "alarm"
         manager.iconURLText = "https://example.com/icon.png"
-        manager.clickURLText = "https://status.example.com"
         manager.isEnabled = true
 
         manager.serviceStatusDidChange(
@@ -118,9 +114,7 @@ final class BarkNotificationManagerTests: XCTestCase {
                     level: .critical,
                     volume: 8,
                     group: "模型监控",
-                    sound: "alarm",
-                    iconURL: "https://example.com/icon.png",
-                    clickURL: "https://status.example.com"
+                    iconURL: "https://example.com/icon.png"
                 )
             ),
         ])
@@ -227,6 +221,26 @@ final class BarkNotificationManagerTests: XCTestCase {
             ),
         ])
         XCTAssertEqual(manager.deliveryState, .success("测试通知已发送"))
+    }
+
+    func testSendingTestNotificationUsesCustomContent() async {
+        let sender = RecordingBarkNotificationSender()
+        let manager = BarkNotificationManager(
+            userDefaults: Self.makeDefaults(),
+            client: sender
+        )
+        manager.deviceKey = "device-key"
+        manager.testContent = "自定义 Bark 测试内容"
+
+        await manager.sendTestNotification()
+
+        let deliveries = await sender.deliveries()
+        XCTAssertEqual(deliveries.map(\.message), [
+            BarkNotificationMessage(
+                title: "用量监控 Bark 通知测试",
+                body: "自定义 Bark 测试内容"
+            ),
+        ])
     }
 
     func testEditingConfigurationClearsPreviousDeliveryResult() async {

@@ -5,6 +5,7 @@ import Foundation
 final class BarkNotificationManager: ObservableObject, ServiceStatusNotificationSinking {
     static let defaultServerURLText = "https://api.day.app"
     static let defaultGroup = "服务状态"
+    static let defaultTestContent = "Bark 通知配置成功"
 
     enum DefaultsKey {
         static let deviceKey = "notification.bark.deviceKey"
@@ -13,9 +14,8 @@ final class BarkNotificationManager: ObservableObject, ServiceStatusNotification
         static let level = "notification.bark.level"
         static let criticalVolume = "notification.bark.criticalVolume"
         static let group = "notification.bark.group"
-        static let sound = "notification.bark.sound"
         static let iconURL = "notification.bark.iconURL"
-        static let clickURL = "notification.bark.clickURL"
+        static let testContent = "notification.bark.testContent"
     }
 
     @Published var deviceKey: String {
@@ -75,13 +75,6 @@ final class BarkNotificationManager: ObservableObject, ServiceStatusNotification
         }
     }
 
-    @Published var sound: String {
-        didSet {
-            configurationDidChange()
-            persistOptionalText(sound, forKey: DefaultsKey.sound)
-        }
-    }
-
     @Published var iconURLText: String {
         didSet {
             configurationDidChange()
@@ -89,10 +82,10 @@ final class BarkNotificationManager: ObservableObject, ServiceStatusNotification
         }
     }
 
-    @Published var clickURLText: String {
+    @Published var testContent: String {
         didSet {
             configurationDidChange()
-            persistOptionalText(clickURLText, forKey: DefaultsKey.clickURL)
+            userDefaults.set(testContent, forKey: DefaultsKey.testContent)
         }
     }
 
@@ -123,9 +116,9 @@ final class BarkNotificationManager: ObservableObject, ServiceStatusNotification
             ?? .active
         criticalVolume = min(max(savedVolume, 0), 10)
         group = userDefaults.string(forKey: DefaultsKey.group) ?? Self.defaultGroup
-        sound = userDefaults.string(forKey: DefaultsKey.sound) ?? ""
         iconURLText = userDefaults.string(forKey: DefaultsKey.iconURL) ?? ""
-        clickURLText = userDefaults.string(forKey: DefaultsKey.clickURL) ?? ""
+        testContent = userDefaults.string(forKey: DefaultsKey.testContent)
+            ?? Self.defaultTestContent
     }
 
     func serviceStatusDidChange(_ change: ServiceStatusChange) {
@@ -157,7 +150,7 @@ final class BarkNotificationManager: ObservableObject, ServiceStatusNotification
         await deliver(
             BarkNotificationMessage(
                 title: "用量监控 Bark 通知测试",
-                body: "Bark 通知配置成功"
+                body: testContent
             ),
             configuration: configuration,
             successMessage: "测试通知已发送"
@@ -189,9 +182,7 @@ final class BarkNotificationManager: ObservableObject, ServiceStatusNotification
             level: level,
             volume: level == .critical ? criticalVolume : nil,
             group: normalizedOptionalText(group),
-            sound: normalizedOptionalText(sound),
-            iconURL: normalizedOptionalText(iconURLText),
-            clickURL: normalizedOptionalText(clickURLText)
+            iconURL: normalizedOptionalText(iconURLText)
         )
     }
 

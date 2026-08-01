@@ -40,6 +40,7 @@ final class SettingsViewRenderingTests: XCTestCase {
             userDefaults: UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!,
             client: RecordingBarkNotificationSender()
         )
+        manager.deviceKey = "bark-test-key"
         manager.level = .critical
         let hostingController = NSHostingController(
             rootView: ZStack {

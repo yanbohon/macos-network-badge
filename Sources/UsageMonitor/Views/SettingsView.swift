@@ -795,8 +795,7 @@ struct NotificationSettingsPage: View {
                 SettingsRow("Key") {
                     notificationTextField(
                         placeholder: "输入 Bark Key",
-                        text: $manager.deviceKey,
-                        secure: true
+                        text: $manager.deviceKey
                     )
                 }
 
@@ -812,15 +811,9 @@ struct NotificationSettingsPage: View {
                     )
                 }
 
-                SettingsRow("中断级别") {
-                    Picker("中断级别", selection: $manager.level) {
-                        ForEach(BarkNotificationLevel.allCases) { level in
-                            Text(level.displayName).tag(level)
-                        }
-                    }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
-                    .frame(width: 150)
+                SettingsRow("通知级别") {
+                    BarkNotificationLevelSelector(selection: $manager.level)
+                        .frame(width: 280)
                 }
 
                 if manager.level == .critical {
@@ -841,29 +834,22 @@ struct NotificationSettingsPage: View {
                     )
                 }
 
-                SettingsRow("铃声") {
-                    notificationTextField(
-                        placeholder: "Bark 铃声名称",
-                        text: $manager.sound
-                    )
-                }
-
                 SettingsRow("图标 URL") {
                     notificationTextField(
                         placeholder: "https://example.com/icon.png",
                         text: $manager.iconURLText
                     )
                 }
-
-                SettingsRow("跳转 URL") {
-                    notificationTextField(
-                        placeholder: "https://example.com",
-                        text: $manager.clickURLText
-                    )
-                }
             }
 
             SettingsSectionLayout("验证") {
+                SettingsRow("通知内容") {
+                    notificationTextField(
+                        placeholder: BarkNotificationManager.defaultTestContent,
+                        text: $manager.testContent
+                    )
+                }
+
                 SettingsRow("测试通知") {
                     Button {
                         Task {
@@ -919,15 +905,53 @@ struct NotificationSettingsPage: View {
 
     private func notificationTextField(
         placeholder: String,
-        text: Binding<String>,
-        secure: Bool = false
+        text: Binding<String>
     ) -> some View {
         NativeTextInput(
             placeholder: placeholder,
             text: text,
-            secure: secure
+            secure: false
         )
         .frame(width: 280, height: 22)
+    }
+}
+
+private struct BarkNotificationLevelSelector: View {
+    @Binding var selection: BarkNotificationLevel
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(BarkNotificationLevel.allCases.enumerated()), id: \.element) { index, level in
+                if index > 0 {
+                    Divider()
+                        .frame(height: 16)
+                }
+
+                Button {
+                    selection = level
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: level.systemImage)
+                        Text(level.displayName)
+                    }
+                    .font(.caption)
+                    .frame(maxWidth: .infinity, minHeight: 24)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(selection == level ? Color.white : Color.primary)
+                .background(selection == level ? Color.accentColor : Color.clear)
+                .help(level.helpText)
+                .accessibilityLabel(level.helpText)
+                .accessibilityAddTraits(selection == level ? .isSelected : [])
+            }
+        }
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 5))
+        .overlay {
+            RoundedRectangle(cornerRadius: 5)
+                .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+        }
     }
 }
 
