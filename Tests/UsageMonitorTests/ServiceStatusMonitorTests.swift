@@ -44,6 +44,109 @@ final class ServiceStatusMonitorTests: XCTestCase {
         XCTAssertEqual(restoredMonitor.menuBarModel, .gpt56Terra)
     }
 
+    func testInitialAvailableStatusAndGreenToYellowChangeDoNotNotify() async {
+        let notifier = RecordingServiceStatusNotifier()
+        let client = StubServiceStatusClient(results: [
+            .success(Self.statusResult(selectedProbe: Self.greenProbe)),
+            .success(Self.statusResult(selectedProbe: Self.yellowProbe)),
+        ])
+        let monitor = ServiceStatusMonitor(
+            userDefaults: Self.makeDefaults(),
+            client: client,
+            timerFactory: ManualTimerFactory(),
+            notificationSink: notifier
+        )
+
+        await monitor.refreshNow()
+        await monitor.refreshNow()
+
+        XCTAssertEqual(notifier.changes, [])
+    }
+
+    func testAvailableToRedChangeNotifiesSelectedModelUnavailable() async {
+        let notifier = RecordingServiceStatusNotifier()
+        let client = StubServiceStatusClient(results: [
+            .success(Self.statusResult(selectedProbe: Self.greenProbe)),
+            .success(Self.statusResult(selectedProbe: Self.redProbe)),
+        ])
+        let monitor = ServiceStatusMonitor(
+            userDefaults: Self.makeDefaults(),
+            client: client,
+            timerFactory: ManualTimerFactory(),
+            notificationSink: notifier
+        )
+
+        await monitor.refreshNow()
+        await monitor.refreshNow()
+
+        XCTAssertEqual(notifier.changes, [
+            ServiceStatusChange(
+                model: .gpt56Sol,
+                previousAvailability: .available,
+                availability: .unavailable,
+                cellKind: .red,
+                probe: Self.redProbe
+            ),
+        ])
+    }
+
+    func testRedToYellowChangeNotifiesSelectedModelAvailable() async {
+        let notifier = RecordingServiceStatusNotifier()
+        let client = StubServiceStatusClient(results: [
+            .success(Self.statusResult(selectedProbe: Self.redProbe)),
+            .success(Self.statusResult(selectedProbe: Self.yellowProbe)),
+        ])
+        let monitor = ServiceStatusMonitor(
+            userDefaults: Self.makeDefaults(),
+            client: client,
+            timerFactory: ManualTimerFactory(),
+            notificationSink: notifier
+        )
+
+        await monitor.refreshNow()
+        await monitor.refreshNow()
+
+        XCTAssertEqual(notifier.changes, [
+            ServiceStatusChange(
+                model: .gpt56Sol,
+                previousAvailability: .unavailable,
+                availability: .available,
+                cellKind: .yellow,
+                probe: Self.yellowProbe
+            ),
+        ])
+    }
+
+    func testChangingMenuBarModelEstablishesNewNotificationBaseline() async {
+        let notifier = RecordingServiceStatusNotifier()
+        let client = StubServiceStatusClient(results: [
+            .success(Self.statusResult(selectedProbe: Self.greenProbe, terraProbe: Self.redProbe)),
+            .success(Self.statusResult(selectedProbe: Self.greenProbe, terraProbe: Self.redProbe)),
+            .success(Self.statusResult(selectedProbe: Self.greenProbe, terraProbe: Self.yellowProbe)),
+        ])
+        let monitor = ServiceStatusMonitor(
+            userDefaults: Self.makeDefaults(),
+            client: client,
+            timerFactory: ManualTimerFactory(),
+            notificationSink: notifier
+        )
+
+        await monitor.refreshNow()
+        monitor.menuBarModel = .gpt56Terra
+        await monitor.refreshNow()
+        await monitor.refreshNow()
+
+        XCTAssertEqual(notifier.changes, [
+            ServiceStatusChange(
+                model: .gpt56Terra,
+                previousAvailability: .unavailable,
+                availability: .available,
+                cellKind: .yellow,
+                probe: Self.yellowProbe
+            ),
+        ])
+    }
+
     func testStartSchedulesOneMinuteTimerAndRefreshesOnce() async throws {
         let client = StubServiceStatusClient(results: [
             .success(Self.statusResult()),
@@ -220,7 +323,25 @@ final class ServiceStatusMonitorTests: XCTestCase {
         XCTAssertEqual(monitor.displayCells.map(\.kind), Array(repeating: .gray, count: 8))
     }
 
-    private static func statusResult(generatedAt: TimeInterval = 1_778_762_578) -> StatusAPIResult {
+    private static let greenProbe = ServiceStatusProbe(ts: 9, ok: true, latencyMS: 900, error: nil)
+    private static let yellowProbe = ServiceStatusProbe(ts: 10, ok: true, latencyMS: 3_500, error: nil)
+    private static let redProbe = ServiceStatusProbe(ts: 11, ok: false, latencyMS: nil, error: "timeout")
+
+    private static func statusResult(
+        generatedAt: TimeInterval = 1_778_762_578,
+        selectedProbe: ServiceStatusProbe = ServiceStatusProbe(
+            ts: 9,
+            ok: false,
+            latencyMS: nil,
+            error: "timeout"
+        ),
+        terraProbe: ServiceStatusProbe = ServiceStatusProbe(
+            ts: 9,
+            ok: true,
+            latencyMS: 900,
+            error: nil
+        )
+    ) -> StatusAPIResult {
         let response = ServiceStatusResponse(
             allOK: true,
             generatedAt: generatedAt,
@@ -228,7 +349,7 @@ final class ServiceStatusMonitorTests: XCTestCase {
                 ServiceStatusService(
                     model: "gpt-5.6-sol",
                     uptimePct: 99.9,
-                    last: ServiceStatusProbe(ts: 9, ok: false, latencyMS: nil, error: "timeout"),
+                    last: selectedProbe,
                     history: [
                         ServiceStatusProbe(ts: 1, ok: true, latencyMS: 100, error: nil),
                         ServiceStatusProbe(ts: 2, ok: true, latencyMS: 3_000, error: nil),
@@ -238,7 +359,7 @@ final class ServiceStatusMonitorTests: XCTestCase {
                 ServiceStatusService(
                     model: "gpt-5.6-terra",
                     uptimePct: 100,
-                    last: ServiceStatusProbe(ts: 9, ok: true, latencyMS: 900, error: nil),
+                    last: terraProbe,
                     history: [
                         ServiceStatusProbe(ts: 9, ok: true, latencyMS: 900, error: nil),
                     ]
@@ -260,6 +381,15 @@ final class ServiceStatusMonitorTests: XCTestCase {
 
     private static func makeDefaults() -> UserDefaults {
         UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!
+    }
+}
+
+@MainActor
+final class RecordingServiceStatusNotifier: ServiceStatusNotificationSinking {
+    private(set) var changes: [ServiceStatusChange] = []
+
+    func serviceStatusDidChange(_ change: ServiceStatusChange) {
+        changes.append(change)
     }
 }
 

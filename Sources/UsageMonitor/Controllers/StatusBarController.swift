@@ -480,12 +480,54 @@ final class StatusBarController: NSObject {
         statusItem.button?.needsLayout = true
     }
 
+    static func popoverPositioningRect(for button: NSStatusBarButton) -> NSRect {
+        let buttonBounds = button.bounds
+        let visualBottomY = button.isFlipped ? buttonBounds.maxY : buttonBounds.minY
+        return NSRect(
+            x: buttonBounds.minX,
+            y: visualBottomY,
+            width: buttonBounds.width,
+            height: 0
+        )
+    }
+
+    static func popoverWindowOrigin(
+        for popoverFrame: NSRect,
+        constrainedTo visibleFrame: NSRect
+    ) -> NSPoint {
+        let menuBarOverlap = max(0, popoverFrame.maxY - visibleFrame.maxY)
+        return NSPoint(
+            x: popoverFrame.minX,
+            y: popoverFrame.minY - menuBarOverlap
+        )
+    }
+
     @objc private func togglePopover(_ sender: NSStatusBarButton) {
         if popover.isShown {
             popover.performClose(sender)
         } else {
-            popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
+            popover.show(
+                relativeTo: Self.popoverPositioningRect(for: sender),
+                of: sender,
+                preferredEdge: .minY
+            )
+            constrainPopoverBelowMenuBar(relativeTo: sender)
             NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
+    private func constrainPopoverBelowMenuBar(relativeTo sender: NSStatusBarButton) {
+        guard let popoverWindow = popover.contentViewController?.view.window else { return }
+        let pointerLocation = NSEvent.mouseLocation
+        let pointerScreen = NSScreen.screens.first { $0.frame.contains(pointerLocation) }
+        guard let screen = popoverWindow.screen ?? sender.window?.screen ?? pointerScreen ?? NSScreen.main else { return }
+
+        let correctedOrigin = Self.popoverWindowOrigin(
+            for: popoverWindow.frame,
+            constrainedTo: screen.visibleFrame
+        )
+        if correctedOrigin != popoverWindow.frame.origin {
+            popoverWindow.setFrameOrigin(correctedOrigin)
         }
     }
 }
