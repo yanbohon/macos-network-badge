@@ -18,9 +18,11 @@ final class MenuBarViewTests: XCTestCase {
         let source = try menuBarViewSource()
 
         XCTAssertTrue(source.contains("keyPager"))
+        XCTAssertTrue(source.contains("cursorSection"))
         XCTAssertTrue(source.contains("UsageKeyPager.selectedEntry"))
         XCTAssertTrue(source.contains("monitor.refreshCurrentKey"))
         XCTAssertTrue(source.contains("monitor.refreshAll"))
+        XCTAssertTrue(source.contains("cursorMonitor.refreshAll"))
         XCTAssertTrue(source.contains("Base URL"))
     }
 
@@ -84,6 +86,20 @@ final class MenuBarViewTests: XCTestCase {
         XCTAssertTrue(source.contains("showMenuBarSymbolsBinding"))
     }
 
+    func testSettingsExposesCursorAccountTab() throws {
+        let source = try settingsViewSource()
+        let cursorPage = try cursorSettingsPageSource()
+
+        XCTAssertTrue(source.contains("SettingsTab.cursor"))
+        XCTAssertTrue(source.contains("CursorSettingsPage(monitor: cursorMonitor)"))
+        XCTAssertTrue(source.contains("Label(\"Cursor\""))
+        XCTAssertTrue(cursorPage.contains("Access Token"))
+        XCTAssertTrue(cursorPage.contains("Refresh Token"))
+        XCTAssertTrue(cursorPage.contains("在菜单栏显示"))
+        XCTAssertTrue(cursorPage.contains("SF Symbol"))
+        XCTAssertTrue(cursorPage.contains("验证并刷新"))
+    }
+
     func testSettingsExposesMenuBarServiceStatusPicker() throws {
         let source = try settingsViewSource()
 
@@ -115,6 +131,15 @@ final class MenuBarViewTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .appendingPathComponent("Sources/UsageMonitor/Views/SettingsView.swift")
+        return try String(contentsOf: sourceURL, encoding: .utf8)
+    }
+
+    private func cursorSettingsPageSource() throws -> String {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Sources/UsageMonitor/Views/CursorSettingsPage.swift")
         return try String(contentsOf: sourceURL, encoding: .utf8)
     }
 }

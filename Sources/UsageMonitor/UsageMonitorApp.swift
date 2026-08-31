@@ -34,6 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     )
     private var monitor: UsageSnapshotMonitor?
     private var serviceStatusMonitor: ServiceStatusMonitor?
+    private var cursorMonitor: CursorUsageMonitor?
     private var statusBarController: StatusBarController?
 
     init(startsBackgroundActivities: Bool = true) {
@@ -48,11 +49,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let serviceStatusMonitor = ServiceStatusMonitor(
             notificationSink: barkNotificationManager
         )
+        let cursorMonitor = CursorUsageMonitor(
+            refreshIntervalSeconds: monitor.refreshIntervalSeconds
+        )
         self.monitor = monitor
         self.serviceStatusMonitor = serviceStatusMonitor
+        self.cursorMonitor = cursorMonitor
         statusBarController = StatusBarController(
             usageMonitor: monitor,
             serviceStatusMonitor: serviceStatusMonitor,
+            cursorMonitor: cursorMonitor,
             settingsWindowController: settingsWindowController,
             startsMonitors: startsBackgroundActivities
         )

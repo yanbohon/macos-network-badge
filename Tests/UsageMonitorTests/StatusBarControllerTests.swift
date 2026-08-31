@@ -20,6 +20,7 @@ final class StatusBarControllerTests: XCTestCase {
         _ = StatusBarController(
             usageMonitor: usageMonitor,
             serviceStatusMonitor: serviceMonitor,
+            cursorMonitor: makeTestCursorMonitor(),
             settingsWindowController: SettingsWindowController(activateApplication: {}),
             startsMonitors: false
         )
@@ -41,6 +42,7 @@ final class StatusBarControllerTests: XCTestCase {
         let controller = StatusBarController(
             usageMonitor: usageMonitor,
             serviceStatusMonitor: serviceMonitor,
+            cursorMonitor: makeTestCursorMonitor(),
             settingsWindowController: SettingsWindowController(activateApplication: {}),
             startsMonitors: false
         )
@@ -140,6 +142,73 @@ final class StatusBarControllerTests: XCTestCase {
     func testMenuBarKeySymbolUsesCenteredOpticalOffset() {
         XCTAssertEqual(StatusBarController.keySymbolOffsetY(for: 10), 1.5)
         XCTAssertEqual(StatusBarController.keySymbolOffsetY(for: 15), 4)
+    }
+
+    func testCursorRowsAppendKeyStyleColumn() {
+        let rows = [
+            MenuBarKeyDisplayRow(id: "a", name: "A", symbolName: "key.fill", text: "$1.23"),
+            MenuBarKeyDisplayRow(id: "b", name: "B", symbolName: "key.fill", text: "$2.34"),
+        ]
+        let cursorColumns = [[
+            MenuBarKeyDisplayRow(
+                id: "c-auto",
+                name: "One Auto",
+                symbolName: "sparkles",
+                symbolColorHex: "#38BDF8",
+                text: "42%"
+            ),
+            MenuBarKeyDisplayRow(
+                id: "c-sand",
+                name: "One Grok",
+                symbolName: "sparkles",
+                symbolColorHex: "#38BDF8",
+                text: "27%"
+            ),
+        ]]
+        let withoutCursor = StatusBarController.statusItemLength(forKeyRows: rows)
+        let withCursor = StatusBarController.statusItemLength(forKeyRows: rows, cursorColumns: cursorColumns)
+        let cursorWidth = StatusBarController.columnWidth(
+            for: cursorColumns[0],
+            keyCount: 4,
+            hideMenuBarSymbols: false
+        )
+
+        XCTAssertEqual(
+            StatusBarController.displayColumns(keyRows: rows, cursorColumns: cursorColumns).count,
+            2
+        )
+        XCTAssertEqual(
+            StatusBarController.displayColumns(keyRows: rows, cursorColumns: cursorColumns)[1].map(\.text),
+            ["42%", "27%"]
+        )
+        XCTAssertEqual(withCursor, withoutCursor + StatusBarController.keyColumnSpacing + cursorWidth)
+    }
+
+    func testAccessibilityTitleAppendsCursorAutoPercent() {
+        let title = StatusBarController.titleText(
+            keyRows: [MenuBarKeyDisplayRow(id: "a", name: "A", symbolName: "key.fill", text: "$1.23")],
+            statusCells: [ServiceStatusDisplayCell(kind: .green, probe: nil)],
+            statusCellsAreStale: false,
+            cursorColumns: [[
+                MenuBarKeyDisplayRow(
+                    id: "c-auto",
+                    name: "One Auto",
+                    symbolName: "sparkles",
+                    symbolColorHex: "#38BDF8",
+                    text: "42%"
+                ),
+                MenuBarKeyDisplayRow(
+                    id: "c-sand",
+                    name: "One Grok",
+                    symbolName: "sparkles",
+                    symbolColorHex: "#A78BFA",
+                    text: "18%"
+                ),
+            ]]
+        )
+
+        XCTAssertTrue(title.contains("One Auto 42%"))
+        XCTAssertTrue(title.contains("One Grok 18%"))
     }
 
     func testFourKeyStatusBarLengthStaysCompact() {
@@ -387,6 +456,7 @@ final class StatusBarControllerTests: XCTestCase {
         let controller = StatusBarController(
             usageMonitor: usageMonitor,
             serviceStatusMonitor: serviceMonitor,
+            cursorMonitor: makeTestCursorMonitor(),
             settingsWindowController: SettingsWindowController(activateApplication: {}),
             statusBar: .system
         )
@@ -428,6 +498,7 @@ final class StatusBarControllerTests: XCTestCase {
         let controller = StatusBarController(
             usageMonitor: usageMonitor,
             serviceStatusMonitor: serviceMonitor,
+            cursorMonitor: makeTestCursorMonitor(),
             settingsWindowController: SettingsWindowController(activateApplication: {}),
             statusBar: .system
         )
@@ -435,15 +506,14 @@ final class StatusBarControllerTests: XCTestCase {
         while serviceMonitor.lastSuccessfulRefresh == nil {
             await Task.yield()
         }
-        await Task.yield()
 
         let button = try statusItemButton(from: controller)
-        XCTAssertTrue(try XCTUnwrap(button.accessibilityTitle()).contains("服务状态正常"))
+        let readyTitle = await waitForAccessibilityTitle(in: button, containing: "服务状态正常")
+        XCTAssertTrue(readyTitle.contains("服务状态正常"))
 
         serviceMonitor.menuBarModel = .gpt55
-        try await Task.sleep(nanoseconds: 100_000_000)
-
-        XCTAssertTrue(try XCTUnwrap(button.accessibilityTitle()).contains("服务状态失败"))
+        let failedTitle = await waitForAccessibilityTitle(in: button, containing: "服务状态失败")
+        XCTAssertTrue(failedTitle.contains("服务状态失败"))
     }
 
     func testVerticalLayoutReservesRoomForStatusStripSpacingAndShortCurrencyText() {
@@ -489,6 +559,19 @@ final class StatusBarControllerTests: XCTestCase {
         XCTAssertEqual(textFrame.minY, 1)
         XCTAssertEqual(textFrame.width, 37)
         XCTAssertEqual(textFrame.height, 17)
+    }
+
+    private func waitForAccessibilityTitle(
+        in button: NSStatusBarButton,
+        containing snippet: String
+    ) async -> String {
+        for _ in 0..<50 {
+            if let title = button.accessibilityTitle(), title.contains(snippet) {
+                return title
+            }
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        return button.accessibilityTitle() ?? ""
     }
 
     private func statusItemButton(from controller: StatusBarController) throws -> NSStatusBarButton {

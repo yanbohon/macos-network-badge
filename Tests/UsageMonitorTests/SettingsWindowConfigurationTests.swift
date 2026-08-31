@@ -18,7 +18,8 @@ final class SettingsWindowConfigurationTests: XCTestCase {
 
         let window = controller.makeWindow(
             monitor: monitor,
-            serviceStatusMonitor: serviceStatusMonitor
+            serviceStatusMonitor: serviceStatusMonitor,
+            cursorMonitor: makeTestCursorMonitor()
         )
 
         XCTAssertEqual(window.title, "用量监控")
@@ -41,7 +42,8 @@ final class SettingsWindowConfigurationTests: XCTestCase {
 
         let window = controller.makeWindow(
             monitor: monitor,
-            serviceStatusMonitor: serviceStatusMonitor
+            serviceStatusMonitor: serviceStatusMonitor,
+            cursorMonitor: makeTestCursorMonitor()
         )
 
         XCTAssertTrue(window.initialFirstResponder === window.contentViewController?.view)

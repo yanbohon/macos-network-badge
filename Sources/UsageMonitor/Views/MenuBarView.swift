@@ -19,6 +19,7 @@ struct MenuBarView: View {
 
     @ObservedObject var monitor: UsageSnapshotMonitor
     @ObservedObject var serviceStatusMonitor: ServiceStatusMonitor
+    @ObservedObject var cursorMonitor: CursorUsageMonitor
     @ObservedObject var settingsWindowController: SettingsWindowController
     @State private var selectedKeyIndex = 0
     @State private var showsAllServiceStatuses = false
@@ -27,6 +28,7 @@ struct MenuBarView: View {
         VStack(alignment: .leading, spacing: 14) {
             header
             serviceStatusSection
+            cursorSection
             keyPager
 
             if let entry = currentEntry {
@@ -85,7 +87,8 @@ struct MenuBarView: View {
             Button {
                 settingsWindowController.showWindow(
                     monitor: monitor,
-                    serviceStatusMonitor: serviceStatusMonitor
+                    serviceStatusMonitor: serviceStatusMonitor,
+                    cursorMonitor: cursorMonitor
                 )
             } label: {
                 Image(systemName: "gearshape")
@@ -156,6 +159,68 @@ struct MenuBarView: View {
             }
             .disabled(selectedKeyIndex >= monitor.usageKeys.count - 1)
             .help("下一个 Key")
+        }
+    }
+
+    private var cursorSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Cursor")
+                    .font(.caption.bold())
+                Spacer()
+                Button {
+                    Task { await cursorMonitor.refreshAll() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .help("刷新 Cursor")
+                .disabled(cursorMonitor.accounts.isEmpty || cursorMonitor.isRefreshing)
+            }
+
+            if cursorMonitor.accounts.isEmpty {
+                Text("未配置 Cursor 账号")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            } else {
+                ForEach(cursorMonitor.accounts) { account in
+                    cursorAccountRow(account)
+                }
+            }
+        }
+    }
+
+    private func cursorAccountRow(_ account: CursorAccountRecord) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+                Image(systemName: MenuBarTitleView.resolvedSymbolName(account.symbolName))
+                    .foregroundStyle(SymbolColor.swiftUIColor(hex: account.ringColorHex))
+                    .frame(width: 10, height: 10)
+                Text(account.displayName)
+                    .lineLimit(1)
+                if account.showsInMenuBar {
+                    Text("菜单栏")
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+                Text("Auto \(account.autoUsageText)")
+                    .monospacedDigit()
+                if account.showsSandRing {
+                    Text("\(account.sandDisplayName) \(account.sandUsageText)")
+                        .monospacedDigit()
+                }
+            }
+            .font(.caption)
+
+            Text(cursorMonitor.refreshText(for: account))
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            if let error = account.lastError, !error.isEmpty, account.autoPercentUsed != nil {
+                Text(error)
+                    .font(.caption)
+                    .foregroundColor(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 

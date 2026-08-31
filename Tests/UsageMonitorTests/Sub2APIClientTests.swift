@@ -149,6 +149,21 @@ final class RequestRecordingLoader: Sub2APIRequestLoading {
     }
 }
 
+extension RequestRecordingLoader: CursorAPIRequestLoading {}
+
+@MainActor
+func makeTestCursorMonitor(
+    userDefaults: UserDefaults = UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!,
+    client: CursorAPIClient = CursorAPIClient(requestLoader: RequestRecordingLoader()),
+    timerFactory: RefreshTimerFactory = ManualTimerFactory()
+) -> CursorUsageMonitor {
+    CursorUsageMonitor(
+        userDefaults: userDefaults,
+        client: client,
+        timerFactory: timerFactory
+    )
+}
+
 final class ManualTimerFactory: RefreshTimerFactory {
     private(set) var scheduledIntervals: [TimeInterval] = []
     private(set) var timers: [ManualRefreshTimer] = []

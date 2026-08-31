@@ -19,7 +19,8 @@ final class SettingsViewRenderingTests: XCTestCase {
 
         let window = controller.makeWindow(
             monitor: monitor,
-            serviceStatusMonitor: serviceStatusMonitor
+            serviceStatusMonitor: serviceStatusMonitor,
+            cursorMonitor: makeTestCursorMonitor()
         )
 
         for size in [

@@ -25,7 +25,8 @@ final class SettingsWindowController: ObservableObject {
 
     func showWindow(
         monitor: UsageSnapshotMonitor,
-        serviceStatusMonitor: ServiceStatusMonitor
+        serviceStatusMonitor: ServiceStatusMonitor,
+        cursorMonitor: CursorUsageMonitor
     ) {
         if let window {
             bringToFront(window)
@@ -34,7 +35,8 @@ final class SettingsWindowController: ObservableObject {
 
         let newWindow = makeWindow(
             monitor: monitor,
-            serviceStatusMonitor: serviceStatusMonitor
+            serviceStatusMonitor: serviceStatusMonitor,
+            cursorMonitor: cursorMonitor
         )
         bringToFront(newWindow)
         window = newWindow
@@ -42,11 +44,13 @@ final class SettingsWindowController: ObservableObject {
 
     func makeWindow(
         monitor: UsageSnapshotMonitor,
-        serviceStatusMonitor: ServiceStatusMonitor
+        serviceStatusMonitor: ServiceStatusMonitor,
+        cursorMonitor: CursorUsageMonitor
     ) -> NSWindow {
         let view = SettingsView(
             monitor: monitor,
             serviceStatusMonitor: serviceStatusMonitor,
+            cursorMonitor: cursorMonitor,
             barkNotificationManager: barkNotificationManager,
             backgroundUpdateCoordinator: backgroundUpdateCoordinator
         )

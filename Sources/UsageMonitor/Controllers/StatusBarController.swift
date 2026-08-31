@@ -27,6 +27,7 @@ final class StatusBarController: NSObject {
 
     private let usageMonitor: UsageSnapshotMonitor
     private let serviceStatusMonitor: ServiceStatusMonitor
+    private let cursorMonitor: CursorUsageMonitor
     private let settingsWindowController: SettingsWindowController
     private let statusItem: NSStatusItem
     private let popover = NSPopover()
@@ -37,12 +38,14 @@ final class StatusBarController: NSObject {
     init(
         usageMonitor: UsageSnapshotMonitor,
         serviceStatusMonitor: ServiceStatusMonitor,
+        cursorMonitor: CursorUsageMonitor,
         settingsWindowController: SettingsWindowController,
         statusBar: NSStatusBar = .system,
         startsMonitors: Bool = true
     ) {
         self.usageMonitor = usageMonitor
         self.serviceStatusMonitor = serviceStatusMonitor
+        self.cursorMonitor = cursorMonitor
         self.settingsWindowController = settingsWindowController
         statusItem = statusBar.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.autosaveName = Self.statusItemAutosaveName
@@ -54,6 +57,8 @@ final class StatusBarController: NSObject {
         if startsMonitors {
             usageMonitor.start()
             serviceStatusMonitor.start()
+            cursorMonitor.syncRefreshInterval(usageMonitor.refreshIntervalSeconds)
+            cursorMonitor.start()
         }
         updateStatusTitle()
     }
@@ -78,13 +83,46 @@ final class StatusBarController: NSObject {
     static func titleText(
         keyRows: [MenuBarKeyDisplayRow],
         statusCells: [ServiceStatusDisplayCell],
-        statusCellsAreStale: Bool
+        statusCellsAreStale: Bool,
+        cursorColumns: [[MenuBarKeyDisplayRow]] = []
     ) -> String {
-        MenuBarTitleView.accessibilityTitle(
-            keyRows: keyRows,
+        let cursorRows = cursorColumns.flatMap { $0 }
+        let base = MenuBarTitleView.accessibilityTitle(
+            keyRows: keyRows + cursorRows,
             statusCells: statusCells,
             statusCellsAreStale: statusCellsAreStale
         )
+        return base
+    }
+
+    static func displayColumns(
+        keyRows: [MenuBarKeyDisplayRow],
+        cursorColumns: [[MenuBarKeyDisplayRow]]
+    ) -> [[MenuBarKeyDisplayRow]] {
+        MenuBarTitleView.keyGridColumns(for: keyRows).filter { !$0.isEmpty }
+            + cursorColumns.filter { !$0.isEmpty }
+    }
+
+    static func displayRowCount(
+        keyRows: [MenuBarKeyDisplayRow],
+        cursorColumns: [[MenuBarKeyDisplayRow]]
+    ) -> Int {
+        keyRows.count + cursorColumns.reduce(0) { $0 + $1.count }
+    }
+
+    static func columnWidth(
+        for column: [MenuBarKeyDisplayRow],
+        keyCount: Int,
+        hideMenuBarSymbols: Bool
+    ) -> CGFloat {
+        let symbolWidth = keySymbolWidth(forKeyCount: keyCount, hideMenuBarSymbols: hideMenuBarSymbols)
+        let symbolSpacing = keySymbolTextSpacing(hideMenuBarSymbols: hideMenuBarSymbols)
+        return column.map { row in
+            symbolWidth
+                + symbolSpacing
+                + ceil(keyTextSize(for: row.text, keyCount: keyCount).width)
+                + keyTextWidthSlack
+        }.max() ?? 0
     }
 
     static func statusItemLength(
@@ -103,19 +141,21 @@ final class StatusBarController: NSObject {
     }
 
     static func statusItemLength(forKeyRows keyRows: [MenuBarKeyDisplayRow], hideMenuBarSymbols: Bool = false) -> CGFloat {
-        let columns = MenuBarTitleView.keyGridColumns(for: keyRows)
-        let symbolWidth = keySymbolWidth(forKeyCount: keyRows.count, hideMenuBarSymbols: hideMenuBarSymbols)
-        let symbolSpacing = keySymbolTextSpacing(hideMenuBarSymbols: hideMenuBarSymbols)
-        let columnWidths = columns.map { column in
-            column.map { row in
-                symbolWidth
-                    + symbolSpacing
-                    + ceil(keyTextSize(for: row.text, keyCount: keyRows.count).width)
-                    + keyTextWidthSlack
-            }.max() ?? 0
+        statusItemLength(forKeyRows: keyRows, hideMenuBarSymbols: hideMenuBarSymbols, cursorColumns: [])
+    }
+
+    static func statusItemLength(
+        forKeyRows keyRows: [MenuBarKeyDisplayRow],
+        hideMenuBarSymbols: Bool = false,
+        cursorColumns: [[MenuBarKeyDisplayRow]]
+    ) -> CGFloat {
+        let columns = displayColumns(keyRows: keyRows, cursorColumns: cursorColumns)
+        let displayCount = displayRowCount(keyRows: keyRows, cursorColumns: cursorColumns)
+        let keysWidth = columns.enumerated().reduce(CGFloat(0)) { partial, item in
+            let width = columnWidth(for: item.element, keyCount: displayCount, hideMenuBarSymbols: hideMenuBarSymbols)
+            let spacing = item.offset == 0 ? 0 : keyColumnSpacing
+            return partial + spacing + width
         }
-        let keysWidth = columnWidths.reduce(0, +)
-            + CGFloat(max(0, columns.count - 1)) * keyColumnSpacing
         return ceil(
             horizontalPadding
             + statusStripWidth(for: .verticalTwo, keyCount: keyRows.count, showMenuBarDecimals: true)
@@ -128,14 +168,16 @@ final class StatusBarController: NSObject {
     static func statusItemHeight(
         forKeyRows keyRows: [MenuBarKeyDisplayRow],
         showMenuBarDecimals: Bool,
-        hideMenuBarSymbols: Bool
+        hideMenuBarSymbols: Bool,
+        cursorColumns: [[MenuBarKeyDisplayRow]] = []
     ) -> CGFloat {
-        let columns = MenuBarTitleView.keyGridColumns(for: keyRows)
+        let columns = displayColumns(keyRows: keyRows, cursorColumns: cursorColumns)
+        let displayCount = displayRowCount(keyRows: keyRows, cursorColumns: cursorColumns)
         var tallestColumnHeight: CGFloat = 0
         for column in columns {
             var columnHeight: CGFloat = 0
             for row in column {
-                columnHeight += ceil(keyTextSize(for: row.text, keyCount: keyRows.count).height)
+                columnHeight += ceil(keyTextSize(for: row.text, keyCount: displayCount).height)
             }
             columnHeight += CGFloat(max(0, column.count - 1)) * keyRowSpacing
             tallestColumnHeight = max(tallestColumnHeight, columnHeight)
@@ -161,11 +203,13 @@ final class StatusBarController: NSObject {
         statusCellsAreStale: Bool,
         showMenuBarDecimals: Bool,
         hideMenuBarSymbols: Bool,
-        height: CGFloat
+        height: CGFloat,
+        cursorColumns: [[MenuBarKeyDisplayRow]] = []
     ) -> NSImage {
         let width = statusItemLength(
             forKeyRows: keyRows,
-            hideMenuBarSymbols: hideMenuBarSymbols
+            hideMenuBarSymbols: hideMenuBarSymbols,
+            cursorColumns: cursorColumns
         )
         let imageSize = NSSize(width: width, height: max(1, height))
         let image = NSImage(size: imageSize)
@@ -178,7 +222,8 @@ final class StatusBarController: NSObject {
             statusCells: statusCells,
             statusCellsAreStale: statusCellsAreStale,
             showMenuBarDecimals: showMenuBarDecimals,
-            hideMenuBarSymbols: hideMenuBarSymbols
+            hideMenuBarSymbols: hideMenuBarSymbols,
+            cursorColumns: cursorColumns
         )
         image.unlockFocus()
         image.isTemplate = false
@@ -191,7 +236,8 @@ final class StatusBarController: NSObject {
         statusCells: [ServiceStatusDisplayCell],
         statusCellsAreStale: Bool,
         showMenuBarDecimals: Bool,
-        hideMenuBarSymbols: Bool
+        hideMenuBarSymbols: Bool,
+        cursorColumns: [[MenuBarKeyDisplayRow]] = []
     ) {
         let contentRect = bounds.insetBy(
             dx: horizontalPadding,
@@ -222,14 +268,14 @@ final class StatusBarController: NSObject {
             NSBezierPath(roundedRect: rect, xRadius: 1, yRadius: 1).fill()
         }
 
-        let columns = MenuBarTitleView.keyGridColumns(for: keyRows)
+        let columns = displayColumns(keyRows: keyRows, cursorColumns: cursorColumns)
         var x = gridX + statusStripWidth(
             for: .verticalTwo,
             keyCount: keyRows.count,
             showMenuBarDecimals: showMenuBarDecimals
         )
             + statusTextSpacing
-        let effectiveKeyCount = keyRows.count
+        let effectiveKeyCount = displayRowCount(keyRows: keyRows, cursorColumns: cursorColumns)
         let shouldHideSymbols = shouldHideKeySymbol(hideMenuBarSymbols: hideMenuBarSymbols)
         let symbolWidth = keySymbolWidth(
             forKeyCount: effectiveKeyCount,
@@ -420,6 +466,7 @@ final class StatusBarController: NSObject {
             rootView: MenuBarView(
                 monitor: usageMonitor,
                 serviceStatusMonitor: serviceStatusMonitor,
+                cursorMonitor: cursorMonitor,
                 settingsWindowController: settingsWindowController
             )
         )
@@ -441,6 +488,20 @@ final class StatusBarController: NSObject {
                 self?.scheduleTitleUpdate()
             }
             .store(in: &cancellables)
+
+        cursorMonitor.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.scheduleTitleUpdate()
+            }
+            .store(in: &cancellables)
+
+        usageMonitor.$refreshIntervalSeconds
+            .receive(on: RunLoop.main)
+            .sink { [weak self] seconds in
+                self?.cursorMonitor.syncRefreshInterval(seconds)
+            }
+            .store(in: &cancellables)
     }
 
     private func scheduleTitleUpdate() {
@@ -456,9 +517,11 @@ final class StatusBarController: NSObject {
             for: serviceStatusMonitor.displayCells,
             count: statusCellCount
         )
+        let cursorColumns = cursorMonitor.menuBarColumns
         let itemLength = Self.statusItemLength(
             forKeyRows: keyRows,
-            hideMenuBarSymbols: usageMonitor.hideMenuBarSymbols
+            hideMenuBarSymbols: usageMonitor.hideMenuBarSymbols,
+            cursorColumns: cursorColumns
         )
 
         statusItem.length = itemLength
@@ -468,13 +531,15 @@ final class StatusBarController: NSObject {
             statusCells: statusCells,
             statusCellsAreStale: serviceStatusMonitor.isStaleAfterFailure,
             showMenuBarDecimals: usageMonitor.showMenuBarDecimals,
-            hideMenuBarSymbols: usageMonitor.hideMenuBarSymbols
+            hideMenuBarSymbols: usageMonitor.hideMenuBarSymbols,
+            cursorColumns: cursorColumns
         )
         statusItem.button?.setAccessibilityTitle(
             Self.titleText(
                 keyRows: keyRows,
                 statusCells: statusCells,
-                statusCellsAreStale: serviceStatusMonitor.isStaleAfterFailure
+                statusCellsAreStale: serviceStatusMonitor.isStaleAfterFailure,
+                cursorColumns: cursorColumns
             )
         )
         statusItem.button?.needsLayout = true
@@ -541,7 +606,20 @@ private final class StatusBarBadgeView: NSView {
     private var statusCellsAreStale = false
     private var showMenuBarDecimals = true
     private var hideMenuBarSymbols = false
+    private var cursorColumns: [[MenuBarKeyDisplayRow]] = []
     private let font: NSFont
+
+    private var displayColumns: [[MenuBarKeyDisplayRow]] {
+        StatusBarController.displayColumns(keyRows: keyRows, cursorColumns: cursorColumns)
+    }
+
+    private var displayRows: [MenuBarKeyDisplayRow] {
+        displayColumns.flatMap { $0 }
+    }
+
+    private var displayRowCount: Int {
+        StatusBarController.displayRowCount(keyRows: keyRows, cursorColumns: cursorColumns)
+    }
 
     init(font: NSFont) {
         self.font = font
@@ -589,14 +667,14 @@ private final class StatusBarBadgeView: NSView {
             indicatorView.layer?.cornerRadius = 1
         }
 
-        let columns = MenuBarTitleView.keyGridColumns(for: keyRows)
+        let columns = displayColumns
         var x = gridX + StatusBarController.statusStripWidth(
             for: .verticalTwo,
             keyCount: keyRows.count,
             showMenuBarDecimals: showMenuBarDecimals
         )
             + StatusBarController.statusTextSpacing
-        let effectiveKeyCount = keyRows.count
+        let effectiveKeyCount = displayRowCount
         let shouldHideSymbols = StatusBarController.shouldHideKeySymbol(
             hideMenuBarSymbols: hideMenuBarSymbols
         )
@@ -649,13 +727,15 @@ private final class StatusBarBadgeView: NSView {
         statusCells: [ServiceStatusDisplayCell],
         statusCellsAreStale: Bool,
         showMenuBarDecimals: Bool,
-        hideMenuBarSymbols: Bool
+        hideMenuBarSymbols: Bool,
+        cursorColumns: [[MenuBarKeyDisplayRow]] = []
     ) {
         self.keyRows = keyRows
         self.statusCells = statusCells
         self.statusCellsAreStale = statusCellsAreStale
         self.showMenuBarDecimals = showMenuBarDecimals
         self.hideMenuBarSymbols = hideMenuBarSymbols
+        self.cursorColumns = cursorColumns
         reconcileKeyViews()
         for (index, indicatorView) in indicatorViews.enumerated() {
             if index < self.statusCells.count {
@@ -674,7 +754,8 @@ private final class StatusBarBadgeView: NSView {
         NSSize(
             width: StatusBarController.statusItemLength(
                 forKeyRows: keyRows,
-                hideMenuBarSymbols: hideMenuBarSymbols
+                hideMenuBarSymbols: hideMenuBarSymbols,
+                cursorColumns: cursorColumns
             ),
             height: intrinsicHeight()
         )
@@ -689,16 +770,18 @@ private final class StatusBarBadgeView: NSView {
         StatusBarController.statusItemHeight(
             forKeyRows: keyRows,
             showMenuBarDecimals: showMenuBarDecimals,
-            hideMenuBarSymbols: hideMenuBarSymbols
+            hideMenuBarSymbols: hideMenuBarSymbols,
+            cursorColumns: cursorColumns
         )
     }
 
     private var displayText: String {
-        keyRows.map(\.text).joined(separator: " ")
+        displayRows.map(\.text).joined(separator: " ")
     }
 
     private func reconcileKeyViews() {
-        while textViews.count < keyRows.count {
+        let rows = displayRows
+        while textViews.count < rows.count {
             let textView = StatusBarTextView(font: font)
             textViews.append(textView)
             addSubview(textView)
@@ -707,11 +790,11 @@ private final class StatusBarBadgeView: NSView {
             symbolViews.append(imageView)
             addSubview(imageView)
         }
-        while textViews.count > keyRows.count {
+        while textViews.count > rows.count {
             textViews.removeLast().removeFromSuperview()
             symbolViews.removeLast().removeFromSuperview()
         }
-        let effectiveKeyCount = keyRows.count
+        let effectiveKeyCount = displayRowCount
         let effectiveFont = StatusBarController.keyTextFont(forKeyCount: effectiveKeyCount)
         let shouldHideSymbols = StatusBarController.shouldHideKeySymbol(
             hideMenuBarSymbols: hideMenuBarSymbols
@@ -720,7 +803,7 @@ private final class StatusBarBadgeView: NSView {
             forKeyCount: effectiveKeyCount,
             hideMenuBarSymbols: hideMenuBarSymbols
         )
-        for (index, row) in keyRows.enumerated() {
+        for (index, row) in rows.enumerated() {
             textViews[index].font = effectiveFont
             textViews[index].text = row.text
             let symbolName = MenuBarTitleView.resolvedSymbolName(row.symbolName)

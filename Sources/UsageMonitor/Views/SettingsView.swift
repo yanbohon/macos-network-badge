@@ -4,6 +4,7 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject var monitor: UsageSnapshotMonitor
     @ObservedObject var serviceStatusMonitor: ServiceStatusMonitor
+    @ObservedObject var cursorMonitor: CursorUsageMonitor
     @ObservedObject var barkNotificationManager: BarkNotificationManager
     private let backgroundUpdateCoordinator: BackgroundUpdateCoordinator
     @State private var draft: SettingsDraft
@@ -17,11 +18,13 @@ struct SettingsView: View {
     init(
         monitor: UsageSnapshotMonitor,
         serviceStatusMonitor: ServiceStatusMonitor,
+        cursorMonitor: CursorUsageMonitor,
         barkNotificationManager: BarkNotificationManager,
         backgroundUpdateCoordinator: BackgroundUpdateCoordinator
     ) {
         self.monitor = monitor
         self.serviceStatusMonitor = serviceStatusMonitor
+        self.cursorMonitor = cursorMonitor
         self.barkNotificationManager = barkNotificationManager
         self.backgroundUpdateCoordinator = backgroundUpdateCoordinator
         _draft = State(initialValue: Self.makeDraft(from: monitor))
@@ -35,6 +38,12 @@ struct SettingsView: View {
                     Label("连接", systemImage: "key.horizontal")
                 }
                 .tag(SettingsTab.connection)
+
+            CursorSettingsPage(monitor: cursorMonitor)
+                .tabItem {
+                    Label("Cursor", systemImage: "circle.dotted")
+                }
+                .tag(SettingsTab.cursor)
 
             displayPage
                 .tabItem {
@@ -703,6 +712,7 @@ struct SettingsView: View {
 
 private enum SettingsTab: Hashable {
     case connection
+    case cursor
     case display
     case refresh
     case notification
