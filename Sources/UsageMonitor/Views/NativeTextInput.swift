@@ -34,10 +34,19 @@ struct NativeTextInput: NSViewRepresentable {
         }
     }
 
+    static func shouldWriteBoundText(_ text: String, fieldValue: String, editorValue: String?) -> Bool {
+        if let editorValue {
+            return editorValue != text
+        }
+        return fieldValue != text
+    }
+
     static func applyBoundText(_ text: String, to textField: NSTextField) {
-        if let editor = textField.currentEditor() {
-            guard editor.string != text else { return }
-        } else if textField.stringValue == text {
+        guard shouldWriteBoundText(
+            text,
+            fieldValue: textField.stringValue,
+            editorValue: textField.currentEditor()?.string
+        ) else {
             return
         }
         textField.stringValue = text
