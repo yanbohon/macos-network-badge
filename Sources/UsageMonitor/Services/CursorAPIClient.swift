@@ -47,6 +47,7 @@ enum CursorAPIClientError: Error, Equatable {
 final class CursorAPIClient {
     static let usageSummaryURL = URL(string: "https://cursor.com/api/usage-summary")!
     static let sandUsageURL = URL(string: "https://cursor.com/api/dashboard/get-sand-usage-status")!
+    static let teamExtractionUsageURL = URL(string: "https://ss.hxfwq.com/api/user/extractions/usage")!
     static let oauthTokenURL = URL(string: "https://api2.cursor.sh/oauth/token")!
     static let userMetaURL = URL(string: "https://api2.cursor.sh/aiserver.v1.AuthService/GetUserMeta")!
     static let authClientID = "KbZUR41cY7W6zRSdpSUJ7I7mLYBKOCmB"
@@ -80,6 +81,22 @@ final class CursorAPIClient {
             method: "GET"
         ))
         return try CursorUsageSummary.parse(from: data)
+    }
+
+    func fetchTeamExtractionUsage(cardSession: String) async throws -> CursorTeamExtractionUsage {
+        let session = cardSession.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !session.isEmpty else {
+            throw CursorAPIClientError.missingSessionCookie
+        }
+
+        var request = URLRequest(url: Self.teamExtractionUsageURL)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 15
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("card_session=\(session)", forHTTPHeaderField: "Cookie")
+        request.setValue(Self.browserUserAgent, forHTTPHeaderField: "User-Agent")
+        let data = try await loadData(request)
+        return try CursorTeamExtractionUsage.parse(from: data)
     }
 
     func fetchSandUsage(accessToken: String) async throws -> CursorSandUsageStatus {

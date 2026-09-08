@@ -63,6 +63,18 @@ enum CursorSessionToken {
         return "WorkosCursorSessionToken=\(userID)%3A%3A\(token)"
     }
 
+    static func exportableAccessToken(from accessToken: String) -> String {
+        let token = normalizedAccessToken(accessToken)
+        guard !token.isEmpty else { return "" }
+        guard let userID = workosUserID(from: accessToken) else {
+            return token
+        }
+        if token.hasPrefix("\(userID)::") {
+            return token
+        }
+        return "\(userID)::\(token)"
+    }
+
     static func expiration(from accessToken: String) -> Date? {
         let exp: Int?
         if let value = jwtPayload(from: accessToken)?["exp"] as? Int {
@@ -89,6 +101,7 @@ enum CursorSessionToken {
 
 struct CursorUsageSummary: Equatable {
     var autoPercentUsed: Double?
+    var apiPercentUsed: Double?
     var membershipType: String?
     var billingCycleEnd: Date?
 
@@ -106,6 +119,7 @@ struct CursorUsageSummary: Equatable {
 
         return CursorUsageSummary(
             autoPercentUsed: pickNumber(plan, "autoPercentUsed", "auto_percent_used"),
+            apiPercentUsed: pickNumber(plan, "apiPercentUsed", "api_percent_used"),
             membershipType: pickString(root, "membershipType", "membership_type"),
             billingCycleEnd: pickDate(root, "billingCycleEnd", "billing_cycle_end")
         )
@@ -114,6 +128,53 @@ struct CursorUsageSummary: Equatable {
     static func displayPercent(from raw: Double) -> Int {
         let base = raw > 0 && raw < 1 ? 1 : raw
         return Int(min(100, max(0, base)).rounded())
+    }
+
+    static func billingCycleEndText(from date: Date?, now: Date = Date()) -> String? {
+        guard let date else { return nil }
+        if date < now {
+            return "已到期"
+        }
+        return "到期 \(date.formatted(date: .abbreviated, time: .omitted))"
+    }
+
+    static func membershipDisplayName(from raw: String?) -> String? {
+        let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmed.isEmpty else { return nil }
+        switch normalizedMembershipKey(raw) {
+        case "team", "teams", "business", "enterprise":
+            return "Team"
+        default:
+            return trimmed
+        }
+    }
+
+    static func membershipColorHex(from raw: String?) -> String? {
+        guard membershipDisplayName(from: raw) != nil else { return nil }
+        switch normalizedMembershipKey(raw) {
+        case "free", "hobby":
+            return "#94A3B8"
+        case "free_trial", "pro_trial", "trial":
+            return "#FB7185"
+        case "pro":
+            return "#38BDF8"
+        case "pro_plus", "proplus":
+            return "#34D399"
+        case "ultra":
+            return "#FBBF24"
+        case "team", "teams", "business", "enterprise":
+            return "#A78BFA"
+        default:
+            return "#94A3B8"
+        }
+    }
+
+    private static func normalizedMembershipKey(_ raw: String?) -> String {
+        (raw ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "-", with: "_")
+            .replacingOccurrences(of: " ", with: "_")
     }
 }
 
@@ -138,6 +199,41 @@ struct CursorSandUsageStatus: Equatable {
             hasNonZeroIncludedLimit: pickBool(root, "hasNonZeroIncludedLimit", "has_non_zero_included_limit") ?? false,
             planLabel: pickString(root, "grokPlanLabel", "grok_plan_label", "planLabel", "plan_label"),
             nextReset: pickDate(root, "nextResetTimestampUtc", "next_reset_timestamp_utc")
+        )
+    }
+}
+
+struct CursorTeamExtractionUsage: Equatable {
+    var email: String?
+    var membershipType: String?
+    var autoPercentUsed: Double?
+    var sandPercentUsed: Double?
+    var sandHasAllowance: Bool
+    var sandPlanLabel: String?
+    var sandResetAt: Date?
+
+    static func parse(from data: Data) throws -> CursorTeamExtractionUsage {
+        let object = try JSONSerialization.jsonObject(with: data)
+        guard let root = object as? [String: Any] else {
+            throw CursorAPIClientError.decoding
+        }
+
+        let results = root["results"] as? [[String: Any]] ?? []
+        guard let first = results.first else {
+            throw CursorAPIClientError.decoding
+        }
+
+        let cursorModels = objectValue(first["cursorModels"]) ?? objectValue(first["cursor_models"])
+        let grokBot = objectValue(first["grokBot"]) ?? objectValue(first["grok_bot"])
+
+        return CursorTeamExtractionUsage(
+            email: pickString(first, "email"),
+            membershipType: pickString(first, "membershipType", "membership_type"),
+            autoPercentUsed: pickNumber(cursorModels, "usedPercent", "used_percent"),
+            sandPercentUsed: pickNumber(grokBot, "usedPercent", "used_percent"),
+            sandHasAllowance: pickBool(grokBot ?? [:], "hasAllowance", "has_allowance") ?? false,
+            sandPlanLabel: pickString(grokBot, "planLabel", "plan_label"),
+            sandResetAt: pickDate(grokBot ?? [:], "resetAt", "reset_at")
         )
     }
 }

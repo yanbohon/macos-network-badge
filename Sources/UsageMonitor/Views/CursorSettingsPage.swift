@@ -5,6 +5,8 @@ struct CursorSettingsPage: View {
     @ObservedObject var monitor: CursorUsageMonitor
     @State private var selectedAccountID: String?
     @State private var connectionStatus: CursorConnectionStatus = .idle
+    @State private var didCopyAccessToken = false
+    @State private var copyAccessTokenResetTask: Task<Void, Never>?
 
     init(monitor: CursorUsageMonitor) {
         self.monitor = monitor
@@ -27,7 +29,7 @@ struct CursorSettingsPage: View {
                                 .foregroundStyle(.secondary)
                             Text("没有 Cursor 账号")
                                 .font(.headline)
-                            Text("粘贴 Access Token 后即可在菜单栏显示 Auto 和 Grok 用量。")
+                            Text("粘贴 Access Token 或 Card Session 后即可在菜单栏显示 Auto 和 Grok 用量。")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .multilineTextAlignment(.center)
@@ -45,6 +47,9 @@ struct CursorSettingsPage: View {
             if selectedAccountID == nil {
                 selectedAccountID = monitor.selectedAccountID ?? monitor.accounts.first?.id
             }
+        }
+        .onChange(of: selectedAccountID) { _ in
+            resetCopiedAccessToken()
         }
     }
 
@@ -105,19 +110,21 @@ struct CursorSettingsPage: View {
 
     private var selectedAccountEditor: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text(selectedAccount?.displayName ?? "未验证账号")
-                    .font(.headline)
-                Spacer()
-                if selectedAccount?.showsInMenuBar == true {
-                    Text("菜单栏")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
+            Text(selectedAccount?.displayName ?? "未验证账号")
+                .font(.headline)
 
             Toggle("在菜单栏显示", isOn: showsInMenuBarBinding)
                 .toggleStyle(.switch)
+
+            formRow("账号类型") {
+                Picker("账号类型", selection: accountKindBinding) {
+                    ForEach(CursorAccountKind.allCases) { kind in
+                        Text(kind.settingsTitle).tag(kind)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+            }
 
             formRow("SF Symbol") {
                 HStack(spacing: 8) {
@@ -139,20 +146,54 @@ struct CursorSettingsPage: View {
                 }
             }
 
-            formRow("Access Token", alignment: .top) {
-                nativeTextField(
-                    placeholder: "粘贴 Cursor Access Token",
-                    text: accessTokenBinding,
-                    secure: true
-                )
-            }
+            if selectedAccount?.kind == .team {
+                formRow("Card Session", alignment: .top) {
+                    HStack(spacing: 6) {
+                        nativeTextField(
+                            placeholder: "粘贴 card_session",
+                            text: accessTokenBinding,
+                            secure: true
+                        )
+                        Button {
+                            copyAccessToken()
+                        } label: {
+                            Image(systemName: didCopyAccessToken ? "checkmark" : "doc.on.clipboard")
+                                .frame(width: 20, height: 20)
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(!(selectedAccount?.hasAccessToken ?? false))
+                        .help(didCopyAccessToken ? "已复制" : "复制 Card Session")
+                        .accessibilityLabel(didCopyAccessToken ? "已复制" : "复制 Card Session")
+                    }
+                }
+            } else {
+                formRow("Access Token", alignment: .top) {
+                    HStack(spacing: 6) {
+                        nativeTextField(
+                            placeholder: "粘贴 Cursor Access Token",
+                            text: accessTokenBinding,
+                            secure: true
+                        )
+                        Button {
+                            copyAccessToken()
+                        } label: {
+                            Image(systemName: didCopyAccessToken ? "checkmark" : "doc.on.clipboard")
+                                .frame(width: 20, height: 20)
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(!(selectedAccount?.hasAccessToken ?? false))
+                        .help(didCopyAccessToken ? "已复制" : "复制 Access Token")
+                        .accessibilityLabel(didCopyAccessToken ? "已复制" : "复制 Access Token")
+                    }
+                }
 
-            formRow("Refresh Token", alignment: .top) {
-                nativeTextField(
-                    placeholder: "可选，过期后自动刷新",
-                    text: refreshTokenBinding,
-                    secure: true
-                )
+                formRow("Refresh Token", alignment: .top) {
+                    nativeTextField(
+                        placeholder: "可选，过期后自动刷新",
+                        text: refreshTokenBinding,
+                        secure: true
+                    )
+                }
             }
 
             if let error = selectedAccount?.lastError, !error.isEmpty {
@@ -236,6 +277,16 @@ struct CursorSettingsPage: View {
         )
     }
 
+    private var accountKindBinding: Binding<CursorAccountKind> {
+        Binding(
+            get: { selectedAccount?.kind ?? .personal },
+            set: { value in
+                guard let selectedAccountID else { return }
+                monitor.updateAccountKind(id: selectedAccountID, kind: value)
+            }
+        )
+    }
+
     private var accessTokenBinding: Binding<String> {
         Binding(
             get: { selectedAccount?.accessToken ?? "" },
@@ -302,13 +353,33 @@ struct CursorSettingsPage: View {
     }
 
     private func accountStatusText(for account: CursorAccountRecord) -> String {
-        if account.showsInMenuBar {
-            return "菜单栏"
-        }
         if !account.hasAccessToken {
             return "未配置"
         }
         return ""
+    }
+
+    private func copyAccessToken() {
+        let raw = selectedAccount?.accessToken ?? ""
+        let token = selectedAccount?.kind == .team
+            ? raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            : CursorSessionToken.exportableAccessToken(from: raw)
+        guard !token.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(token, forType: .string)
+        didCopyAccessToken = true
+        copyAccessTokenResetTask?.cancel()
+        copyAccessTokenResetTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            guard !Task.isCancelled else { return }
+            didCopyAccessToken = false
+        }
+    }
+
+    private func resetCopiedAccessToken() {
+        copyAccessTokenResetTask?.cancel()
+        copyAccessTokenResetTask = nil
+        didCopyAccessToken = false
     }
 
     private func deleteSelectedAccount() {

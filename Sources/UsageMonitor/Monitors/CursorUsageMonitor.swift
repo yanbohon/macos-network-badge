@@ -1,5 +1,21 @@
 import Foundation
 
+enum CursorAccountKind: String, Codable, CaseIterable, Identifiable {
+    case personal
+    case team
+
+    var id: String { rawValue }
+
+    var settingsTitle: String {
+        switch self {
+        case .personal:
+            return "个人"
+        case .team:
+            return "Team"
+        }
+    }
+}
+
 struct CursorAccountRecord: Equatable, Identifiable, Codable {
     static let defaultSymbolName = "sparkles"
     static let defaultRingColorHex = "#38BDF8"
@@ -13,10 +29,14 @@ struct CursorAccountRecord: Equatable, Identifiable, Codable {
     ]
 
     var id: String
+    var kind: CursorAccountKind
     var email: String
     var accessToken: String
     var refreshToken: String
     var autoPercentUsed: Double?
+    var apiPercentUsed: Double?
+    var membershipType: String?
+    var billingCycleEnd: Date?
     var sandPercentUsed: Double?
     var sandHasAllowance: Bool
     var sandPlanLabel: String?
@@ -36,8 +56,28 @@ struct CursorAccountRecord: Equatable, Identifiable, Codable {
         !accessToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    var cardSession: String {
+        accessToken.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var membershipDisplayName: String? {
+        CursorUsageSummary.membershipDisplayName(from: membershipType)
+    }
+
+    var membershipColorHex: String? {
+        CursorUsageSummary.membershipColorHex(from: membershipType)
+    }
+
+    var billingCycleEndText: String? {
+        CursorUsageSummary.billingCycleEndText(from: billingCycleEnd)
+    }
+
     var autoUsageText: String {
         percentText(autoPercentUsed)
+    }
+
+    var apiUsageText: String {
+        percentText(apiPercentUsed)
     }
 
     var sandUsageText: String {
@@ -62,10 +102,14 @@ struct CursorAccountRecord: Equatable, Identifiable, Codable {
 
     init(
         id: String,
+        kind: CursorAccountKind = .personal,
         email: String,
         accessToken: String,
         refreshToken: String,
         autoPercentUsed: Double? = nil,
+        apiPercentUsed: Double? = nil,
+        membershipType: String? = nil,
+        billingCycleEnd: Date? = nil,
         sandPercentUsed: Double? = nil,
         sandHasAllowance: Bool = false,
         sandPlanLabel: String? = nil,
@@ -77,10 +121,14 @@ struct CursorAccountRecord: Equatable, Identifiable, Codable {
         ringColorHex: String = Self.defaultRingColorHex
     ) {
         self.id = id
+        self.kind = kind
         self.email = email
         self.accessToken = accessToken
         self.refreshToken = refreshToken
         self.autoPercentUsed = autoPercentUsed
+        self.apiPercentUsed = apiPercentUsed
+        self.membershipType = membershipType
+        self.billingCycleEnd = billingCycleEnd
         self.sandPercentUsed = sandPercentUsed
         self.sandHasAllowance = sandHasAllowance
         self.sandPlanLabel = sandPlanLabel
@@ -95,10 +143,14 @@ struct CursorAccountRecord: Equatable, Identifiable, Codable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
+        kind = try container.decodeIfPresent(CursorAccountKind.self, forKey: .kind) ?? .personal
         email = try container.decodeIfPresent(String.self, forKey: .email) ?? ""
         accessToken = try container.decodeIfPresent(String.self, forKey: .accessToken) ?? ""
         refreshToken = try container.decodeIfPresent(String.self, forKey: .refreshToken) ?? ""
         autoPercentUsed = try container.decodeIfPresent(Double.self, forKey: .autoPercentUsed)
+        apiPercentUsed = try container.decodeIfPresent(Double.self, forKey: .apiPercentUsed)
+        membershipType = try container.decodeIfPresent(String.self, forKey: .membershipType)
+        billingCycleEnd = try container.decodeIfPresent(Date.self, forKey: .billingCycleEnd)
         sandPercentUsed = try container.decodeIfPresent(Double.self, forKey: .sandPercentUsed)
         sandHasAllowance = try container.decodeIfPresent(Bool.self, forKey: .sandHasAllowance) ?? false
         sandPlanLabel = try container.decodeIfPresent(String.self, forKey: .sandPlanLabel)
@@ -300,10 +352,25 @@ final class CursorUsageMonitor: ObservableObject {
         persistAccounts()
     }
 
+    func updateAccountKind(id: String, kind: CursorAccountKind) {
+        guard let index = accounts.firstIndex(where: { $0.id == id }) else { return }
+        guard accounts[index].kind != kind else { return }
+        var updated = accounts
+        updated[index].kind = kind
+        updated[index].accessToken = ""
+        updated[index].refreshToken = ""
+        clearUsage(in: &updated[index])
+        accounts = updated
+        persistAccounts()
+    }
+
     func updateAccount(id: String, accessToken: String, refreshToken: String) {
         guard let index = accounts.firstIndex(where: { $0.id == id }) else { return }
-        let normalizedAccess = CursorSessionToken.normalizedAccessToken(accessToken)
-        let normalizedRefresh = refreshToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isTeam = accounts[index].kind == .team
+        let normalizedAccess = isTeam
+            ? accessToken.trimmingCharacters(in: .whitespacesAndNewlines)
+            : CursorSessionToken.normalizedAccessToken(accessToken)
+        let normalizedRefresh = isTeam ? "" : refreshToken.trimmingCharacters(in: .whitespacesAndNewlines)
         var updated = accounts
         let tokenChanged =
             updated[index].accessToken != normalizedAccess
@@ -311,13 +378,7 @@ final class CursorUsageMonitor: ObservableObject {
         updated[index].accessToken = normalizedAccess
         updated[index].refreshToken = normalizedRefresh
         if tokenChanged {
-            updated[index].autoPercentUsed = nil
-            updated[index].sandPercentUsed = nil
-            updated[index].sandHasAllowance = false
-            updated[index].sandPlanLabel = nil
-            updated[index].sandResetAt = nil
-            updated[index].lastSuccessfulRefresh = nil
-            updated[index].lastError = nil
+            clearUsage(in: &updated[index])
         }
         accounts = updated
         persistAccounts()
@@ -345,6 +406,11 @@ final class CursorUsageMonitor: ObservableObject {
 
     private func refreshAccountWithoutFlag(id: String) async {
         guard let index = accounts.firstIndex(where: { $0.id == id }) else { return }
+        if accounts[index].kind == .team {
+            await refreshTeamAccount(id: id)
+            return
+        }
+
         guard accounts[index].hasAccessToken || !accounts[index].refreshToken.isEmpty else {
             var updated = accounts
             updated[index].lastError = "请先粘贴 Access Token"
@@ -365,6 +431,41 @@ final class CursorUsageMonitor: ObservableObject {
             } else {
                 recordFailure(id: id, error: error)
             }
+        } catch {
+            recordFailure(id: id, error: error)
+        }
+    }
+
+    private func refreshTeamAccount(id: String) async {
+        guard let index = accounts.firstIndex(where: { $0.id == id }) else { return }
+        let cardSession = accounts[index].cardSession
+        guard !cardSession.isEmpty else {
+            var updated = accounts
+            updated[index].lastError = "请先粘贴 Card Session"
+            accounts = updated
+            persistAccounts()
+            return
+        }
+
+        do {
+            let snapshot = try await client.fetchTeamExtractionUsage(cardSession: cardSession)
+            guard let latestIndex = accounts.firstIndex(where: { $0.id == id }) else { return }
+            var updated = accounts
+            if let email = snapshot.email, !email.isEmpty {
+                updated[latestIndex].email = email
+            }
+            updated[latestIndex].autoPercentUsed = snapshot.autoPercentUsed
+            updated[latestIndex].apiPercentUsed = nil
+            updated[latestIndex].membershipType = snapshot.membershipType
+            updated[latestIndex].billingCycleEnd = nil
+            updated[latestIndex].sandHasAllowance = snapshot.sandHasAllowance
+            updated[latestIndex].sandPercentUsed = snapshot.sandHasAllowance ? snapshot.sandPercentUsed : nil
+            updated[latestIndex].sandPlanLabel = snapshot.sandPlanLabel
+            updated[latestIndex].sandResetAt = snapshot.sandResetAt
+            updated[latestIndex].lastSuccessfulRefresh = now()
+            updated[latestIndex].lastError = snapshot.autoPercentUsed == nil ? "响应中没有 Auto 用量" : nil
+            accounts = updated
+            persistAccounts()
         } catch {
             recordFailure(id: id, error: error)
         }
@@ -403,6 +504,9 @@ final class CursorUsageMonitor: ObservableObject {
         }
 
         updated[latestIndex].autoPercentUsed = summary.autoPercentUsed
+        updated[latestIndex].apiPercentUsed = summary.apiPercentUsed
+        updated[latestIndex].membershipType = summary.membershipType
+        updated[latestIndex].billingCycleEnd = summary.billingCycleEnd
         updated[latestIndex].lastSuccessfulRefresh = now()
         updated[latestIndex].lastError = summary.autoPercentUsed == nil ? "响应中没有 Auto 用量" : nil
         accounts = updated
@@ -418,6 +522,19 @@ final class CursorUsageMonitor: ObservableObject {
             accounts = sandUpdated
             persistAccounts()
         }
+    }
+
+    private func clearUsage(in account: inout CursorAccountRecord) {
+        account.autoPercentUsed = nil
+        account.apiPercentUsed = nil
+        account.membershipType = nil
+        account.billingCycleEnd = nil
+        account.sandPercentUsed = nil
+        account.sandHasAllowance = false
+        account.sandPlanLabel = nil
+        account.sandResetAt = nil
+        account.lastSuccessfulRefresh = nil
+        account.lastError = nil
     }
 
     private func currentRefreshToken(for id: String) -> String {

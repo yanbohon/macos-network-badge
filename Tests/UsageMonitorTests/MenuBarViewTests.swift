@@ -14,16 +14,25 @@ final class MenuBarViewTests: XCTestCase {
         XCTAssertFalse(source.contains("serviceStatusMonitor.rawJSONText"))
     }
 
-    func testPopoverContainsKeyPagerAndCurrentKeyRefreshActions() throws {
+    func testPopoverListsCursorAccountsAndKeysWithoutPager() throws {
         let source = try menuBarViewSource()
 
-        XCTAssertTrue(source.contains("keyPager"))
         XCTAssertTrue(source.contains("cursorSection"))
-        XCTAssertTrue(source.contains("UsageKeyPager.selectedEntry"))
-        XCTAssertTrue(source.contains("monitor.refreshCurrentKey"))
+        XCTAssertTrue(source.contains("keysSection"))
+        XCTAssertTrue(source.contains("account.membershipDisplayName"))
+        XCTAssertTrue(source.contains("membershipColor(for: account)"))
+        XCTAssertTrue(source.contains("cursorStatusLine(for: account)"))
+        XCTAssertTrue(source.contains("account.billingCycleEndText"))
+        XCTAssertTrue(source.contains("Text(\"Auto \\(account.autoUsageText)\")"))
+        XCTAssertTrue(source.contains("Text(\"API \\(account.apiUsageText)\")"))
+        XCTAssertTrue(source.contains("todayBalanceText(for: entry)"))
+        XCTAssertTrue(source.contains("refreshText(for: entry)"))
+        XCTAssertFalse(source.contains("Text(\"菜单栏\")"))
+        XCTAssertFalse(source.contains("keyPager"))
+        XCTAssertFalse(source.contains("UsageKeyPager.selectedEntry"))
+        XCTAssertFalse(source.contains("monitor.refreshCurrentKey"))
         XCTAssertTrue(source.contains("monitor.refreshAll"))
         XCTAssertTrue(source.contains("cursorMonitor.refreshAll"))
-        XCTAssertTrue(source.contains("Base URL"))
     }
 
     func testPopoverDefaultsToGPT56SolAndDisclosesRemainingModels() throws {
@@ -45,18 +54,13 @@ final class MenuBarViewTests: XCTestCase {
         XCTAssertFalse(source.contains("modelStatsSection(snapshot.modelStats)"))
         XCTAssertFalse(source.contains("private func usageSection"))
         XCTAssertFalse(source.contains("private func modelStatsSection"))
-
-        let keySummaryStart = try XCTUnwrap(source.range(of: "private func keySummary"))
-        let usageSnapshotStart = try XCTUnwrap(
-            source.range(
-                of: "private func usageSnapshot",
-                range: keySummaryStart.upperBound..<source.endIndex
-            )
-        )
-        let keySummarySource = source[keySummaryStart.lowerBound..<usageSnapshotStart.lowerBound]
-
-        XCTAssertFalse(keySummarySource.contains("statusLineText(for: entry)"))
-        XCTAssertFalse(keySummarySource.contains("entry.lastSuccessfulRefresh"))
+        XCTAssertFalse(source.contains("private func keySummary"))
+        XCTAssertFalse(source.contains("private func usageSnapshot"))
+        XCTAssertFalse(source.contains("private func planSection"))
+        XCTAssertFalse(source.contains("private func subscriptionSection"))
+        XCTAssertFalse(source.contains("private func currentKeyDetail"))
+        XCTAssertFalse(source.contains("snapshot.planName"))
+        XCTAssertFalse(source.contains("Base URL"))
     }
 
     func testSettingsKeyRowsExposeWholeRowClickTarget() throws {
@@ -95,9 +99,16 @@ final class MenuBarViewTests: XCTestCase {
         XCTAssertTrue(source.contains("Label(\"Cursor\""))
         XCTAssertTrue(cursorPage.contains("Access Token"))
         XCTAssertTrue(cursorPage.contains("Refresh Token"))
+        XCTAssertTrue(cursorPage.contains("Card Session"))
+        XCTAssertTrue(cursorPage.contains("账号类型"))
+        XCTAssertTrue(cursorPage.contains("kind == .team"))
         XCTAssertTrue(cursorPage.contains("在菜单栏显示"))
         XCTAssertTrue(cursorPage.contains("SF Symbol"))
         XCTAssertTrue(cursorPage.contains("验证并刷新"))
+        XCTAssertTrue(cursorPage.contains("复制 Access Token"))
+        XCTAssertTrue(cursorPage.contains("copyAccessToken()"))
+        XCTAssertTrue(cursorPage.contains("CursorSessionToken.exportableAccessToken"))
+        XCTAssertTrue(cursorPage.contains("NSPasteboard.general.setString"))
     }
 
     func testSettingsExposesMenuBarServiceStatusPicker() throws {

@@ -21,7 +21,6 @@ struct MenuBarView: View {
     @ObservedObject var serviceStatusMonitor: ServiceStatusMonitor
     @ObservedObject var cursorMonitor: CursorUsageMonitor
     @ObservedObject var settingsWindowController: SettingsWindowController
-    @State private var selectedKeyIndex = 0
     @State private var showsAllServiceStatuses = false
 
     var body: some View {
@@ -29,28 +28,10 @@ struct MenuBarView: View {
             header
             serviceStatusSection
             cursorSection
-            keyPager
-
-            if let entry = currentEntry {
-                currentKeyDetail(entry)
-            } else {
-                Text("未配置")
-                    .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            if let entry = currentEntry, !(entry.thresholdAlertState?.messages ?? []).isEmpty {
-                alertSection(entry)
-            }
+            keysSection
         }
         .padding(16)
         .frame(width: 440)
-        .onChange(of: monitor.usageKeys.count) { newValue in
-            selectedKeyIndex = UsageKeyPager.clampedSelection(
-                currentIndex: selectedKeyIndex,
-                keyCount: newValue
-            )
-        }
     }
 
     private var header: some View {
@@ -69,20 +50,11 @@ struct MenuBarView: View {
             Spacer()
 
             Button {
-                if let id = currentEntry?.id {
-                    Task { await monitor.refreshCurrentKey(id: id) }
-                }
+                Task { await monitor.refreshAll() }
             } label: {
                 Image(systemName: "arrow.clockwise")
             }
-            .help("刷新当前 Key")
-
-            Button {
-                Task { await monitor.refreshAll() }
-            } label: {
-                Image(systemName: "arrow.clockwise.circle")
-            }
-            .help("全部刷新")
+            .help("刷新 Key")
 
             Button {
                 settingsWindowController.showWindow(
@@ -112,54 +84,6 @@ struct MenuBarView: View {
             return "上次成功刷新 \(date.formatted(date: .omitted, time: .shortened))"
         }
         return "尚未成功刷新"
-    }
-
-    private var currentEntry: UsageKeyEntry? {
-        UsageKeyPager.selectedEntry(in: monitor.usageKeys, selectedIndex: selectedKeyIndex)
-    }
-
-    private var keyPager: some View {
-        HStack(spacing: 10) {
-            Button {
-                selectedKeyIndex = UsageKeyPager.clampedSelection(
-                    currentIndex: selectedKeyIndex - 1,
-                    keyCount: monitor.usageKeys.count
-                )
-            } label: {
-                Image(systemName: "chevron.left")
-            }
-            .disabled(selectedKeyIndex <= 0)
-            .help("上一个 Key")
-
-            Spacer()
-
-            if let entry = currentEntry {
-                VStack(spacing: 2) {
-                    HStack(spacing: 6) {
-                        Image(systemName: MenuBarTitleView.resolvedSymbolName(entry.configuration.symbolName))
-                            .foregroundStyle(SymbolColor.swiftUIColor(hex: entry.configuration.symbolColorHex))
-                        Text(entry.configuration.name)
-                            .font(.subheadline.bold())
-                    }
-                    Text("第 \(UsageKeyPager.clampedSelection(currentIndex: selectedKeyIndex, keyCount: monitor.usageKeys.count) + 1) / \(max(1, monitor.usageKeys.count)) 个")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            }
-
-            Spacer()
-
-            Button {
-                selectedKeyIndex = UsageKeyPager.clampedSelection(
-                    currentIndex: selectedKeyIndex + 1,
-                    keyCount: monitor.usageKeys.count
-                )
-            } label: {
-                Image(systemName: "chevron.right")
-            }
-            .disabled(selectedKeyIndex >= monitor.usageKeys.count - 1)
-            .help("下一个 Key")
-        }
     }
 
     private var cursorSection: some View {
@@ -197,12 +121,15 @@ struct MenuBarView: View {
                     .frame(width: 10, height: 10)
                 Text(account.displayName)
                     .lineLimit(1)
-                if account.showsInMenuBar {
-                    Text("菜单栏")
-                        .foregroundColor(.secondary)
+                if let plan = account.membershipDisplayName {
+                    Text(plan)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(membershipColor(for: account))
                 }
                 Spacer()
                 Text("Auto \(account.autoUsageText)")
+                    .monospacedDigit()
+                Text("API \(account.apiUsageText)")
                     .monospacedDigit()
                 if account.showsSandRing {
                     Text("\(account.sandDisplayName) \(account.sandUsageText)")
@@ -211,7 +138,7 @@ struct MenuBarView: View {
             }
             .font(.caption)
 
-            Text(cursorMonitor.refreshText(for: account))
+            Text(cursorStatusLine(for: account))
                 .font(.caption)
                 .foregroundColor(.secondary)
 
@@ -224,24 +151,94 @@ struct MenuBarView: View {
         }
     }
 
-    private func alertSection(_ entry: UsageKeyEntry) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("提醒")
-                .font(.caption.bold())
-            ForEach(Array((entry.thresholdAlertState?.messages ?? []).enumerated()), id: \.offset) { _, message in
-                Text(message)
+    private func cursorStatusLine(for account: CursorAccountRecord) -> String {
+        [cursorMonitor.refreshText(for: account), account.billingCycleEndText]
+            .compactMap { $0 }
+            .joined(separator: " · ")
+    }
+
+    private func membershipColor(for account: CursorAccountRecord) -> Color {
+        guard let hex = account.membershipColorHex else {
+            return .secondary
+        }
+        return SymbolColor.swiftUIColor(hex: hex)
+    }
+
+    private var keysSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Key")
+                    .font(.caption.bold())
+                Spacer()
+                Button {
+                    Task { await monitor.refreshAll() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .help("刷新 Key")
+                .disabled(monitor.usageKeys.isEmpty || monitor.isRefreshing)
+            }
+
+            if monitor.usageKeys.isEmpty {
+                Text("未配置 Key")
                     .font(.caption)
-                    .foregroundColor(alertColor(for: entry))
+                    .foregroundColor(.secondary)
+            } else {
+                ForEach(monitor.usageKeys) { entry in
+                    keyAccountRow(entry)
+                }
             }
         }
     }
 
-    private func alertColor(for entry: UsageKeyEntry) -> Color {
-        if let alert = entry.thresholdAlertState,
-           alert.kinds.contains(.dailyUsage95) || alert.kinds.contains(.subscriptionExpired) {
-            return .red
+    private func keyAccountRow(_ entry: UsageKeyEntry) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+                Image(systemName: MenuBarTitleView.resolvedSymbolName(entry.configuration.symbolName))
+                    .foregroundStyle(SymbolColor.swiftUIColor(hex: entry.configuration.symbolColorHex))
+                    .frame(width: 10, height: 10)
+                Text(entry.configuration.name)
+                    .lineLimit(1)
+                Spacer()
+                Text("今日 \(todayBalanceText(for: entry))")
+                    .monospacedDigit()
+            }
+            .font(.caption)
+
+            Text(refreshText(for: entry))
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            if let error = entry.lastError, !error.isEmpty, entry.canShowSnapshotData {
+                Text(error)
+                    .font(.caption)
+                    .foregroundColor(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
-        return .orange
+    }
+
+    private func todayBalanceText(for entry: UsageKeyEntry) -> String {
+        guard entry.canShowSnapshotData, let subscription = entry.snapshot?.subscription else {
+            return "—"
+        }
+        if subscription.dailyLimitUSD == 0 {
+            return "不限量"
+        }
+        return UsageFormatters.balanceText(max(0, subscription.dailyLimitUSD - subscription.dailyUsageUSD))
+    }
+
+    private func refreshText(for entry: UsageKeyEntry) -> String {
+        if monitor.isRefreshing || entry.isRefreshing {
+            return "正在刷新"
+        }
+        if let date = entry.lastSuccessfulRefresh {
+            return "上次成功刷新 \(date.formatted(date: .omitted, time: .shortened))"
+        }
+        if let error = entry.lastError, !error.isEmpty {
+            return error
+        }
+        return "尚未成功刷新"
     }
 
     private var serviceStatusSection: some View {
@@ -429,167 +426,5 @@ struct MenuBarView: View {
     private func formattedLatency(_ latencyMS: Int?) -> String {
         guard let latencyMS else { return "--" }
         return "\(latencyMS) ms"
-    }
-
-    private func currentKeyDetail(_ entry: UsageKeyEntry) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            keySummary(entry)
-            if let snapshot = entry.snapshot, entry.canShowSnapshotData {
-                usageSnapshot(snapshot)
-            } else {
-                Text(statusLineText(for: entry))
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-    }
-
-    private func keySummary(_ entry: UsageKeyEntry) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack {
-                Image(systemName: MenuBarTitleView.resolvedSymbolName(entry.configuration.symbolName))
-                    .foregroundStyle(SymbolColor.swiftUIColor(hex: entry.configuration.symbolColorHex))
-                Text(entry.configuration.name)
-                    .font(.caption.bold())
-                Spacer()
-                Text("余额 \(balanceText(for: entry))")
-                    .font(.caption.monospacedDigit())
-                    .foregroundColor(.secondary)
-            }
-            Text(baseURLSourceText(for: entry.configuration))
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .lineLimit(1)
-            if let detail = entry.lastError {
-                Text(detail)
-                    .font(.caption)
-                    .foregroundColor(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-
-    private func usageSnapshot(_ snapshot: UsageResponse) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            planSection(snapshot)
-            subscriptionSection(snapshot.subscription)
-        }
-    }
-
-    private func planSection(_ snapshot: UsageResponse) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(snapshot.planName)
-                    .font(.subheadline.bold())
-                Spacer()
-                Text(snapshot.isValid ? "有效" : "无效")
-                    .font(.caption)
-                    .foregroundColor(snapshot.isValid ? .green : .red)
-            }
-        }
-    }
-
-    private func subscriptionSection(_ subscription: UsageSubscription) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text("订阅")
-                .font(.caption.bold())
-            metricRow(
-                title: "今日",
-                value: UsageFormatters.usageLimitText(
-                    used: subscription.dailyUsageUSD,
-                    limit: subscription.dailyLimitUSD
-                ),
-                trailing: UsageFormatters.percentageText(
-                    used: subscription.dailyUsageUSD,
-                    limit: subscription.dailyLimitUSD
-                )
-            )
-            metricRow(
-                title: "本周",
-                value: UsageFormatters.usageLimitText(
-                    used: subscription.weeklyUsageUSD,
-                    limit: subscription.weeklyLimitUSD
-                )
-            )
-            metricRow(
-                title: "本月",
-                value: UsageFormatters.usageLimitText(
-                    used: subscription.monthlyUsageUSD,
-                    limit: subscription.monthlyLimitUSD
-                )
-            )
-            Text(UsageFormatters.expiryText(subscription.expiresAt))
-                .font(.caption)
-                .foregroundColor(.secondary)
-        }
-    }
-
-    private func metricRow(title: String, value: String, trailing: String? = nil) -> some View {
-        HStack {
-            Text(title)
-                .foregroundColor(.secondary)
-            Text(value)
-                .monospacedDigit()
-            Spacer()
-            if let trailing {
-                Text(trailing)
-                    .foregroundColor(.secondary)
-            }
-        }
-        .font(.caption)
-    }
-
-    private func balanceText(for entry: UsageKeyEntry) -> String {
-        guard entry.canShowSnapshotData, let snapshot = entry.snapshot else { return "--" }
-        return UsageFormatters.balanceText(snapshot.remaining)
-    }
-
-    private func baseURLSourceText(for configuration: UsageKeyConfiguration) -> String {
-        switch configuration.baseURLMode {
-        case .inherited:
-            return "Base URL：继承 \(monitor.defaultBaseURLText)"
-        case .independent:
-            return "Base URL：独立 \(configuration.baseURLOverride)"
-        }
-    }
-
-    private func statusLineText(for entry: UsageKeyEntry) -> String {
-        if entry.isRefreshing {
-            return "正在刷新"
-        }
-
-        switch entry.snapshotFreshness {
-        case .fresh:
-            return "数据已刷新"
-        case .stale:
-            if let lastFailureKind = entry.lastFailureKind {
-                return lastFailureKind.stateTextWhenCached
-            }
-            return "缓存数据（等待刷新）"
-        case .configurationMismatch:
-            return "配置已变更，未验证"
-        case .empty:
-            if entry.configuration.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                return "未配置"
-            }
-            if let lastFailureKind = entry.lastFailureKind {
-                return lastFailureKind.stateTextWithoutCache
-            }
-            return "未刷新"
-        }
-    }
-}
-
-extension UsageHealthState {
-    var swiftUIColor: Color {
-        switch self {
-        case .normal:
-            return .green
-        case .warning:
-            return .orange
-        case .danger:
-            return .red
-        }
     }
 }

@@ -22,13 +22,25 @@ struct NativeTextInput: NSViewRepresentable {
 
     func updateNSView(_ textField: NSTextField, context: Context) {
         context.coordinator.text = $text
-        configure(textField, coordinator: context.coordinator)
-        if textField.stringValue != text {
-            textField.stringValue = text
+        if textField.currentEditor() == nil {
+            configure(textField, coordinator: context.coordinator)
+        } else {
+            textField.delegate = context.coordinator
+            textField.placeholderString = placeholder
         }
+        Self.applyBoundText(text, to: textField)
         if autoFocus {
             context.coordinator.requestInitialFocus(on: textField)
         }
+    }
+
+    static func applyBoundText(_ text: String, to textField: NSTextField) {
+        if let editor = textField.currentEditor() {
+            guard editor.string != text else { return }
+        } else if textField.stringValue == text {
+            return
+        }
+        textField.stringValue = text
     }
 
     private func configure(_ textField: NSTextField, coordinator: NativeTextInputCoordinator) {

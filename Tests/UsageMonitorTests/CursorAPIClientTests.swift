@@ -23,6 +23,20 @@ final class CursorSessionTokenTests: XCTestCase {
         )
     }
 
+    func testExportableAccessTokenRestoresUserPrefixedSessionToken() {
+        let jwt = Self.makeJWT(sub: "email|user_01COPY", exp: 1_800_000_000)
+        XCTAssertEqual(
+            CursorSessionToken.exportableAccessToken(from: jwt),
+            "user_01COPY::\(jwt)"
+        )
+        XCTAssertEqual(
+            CursorSessionToken.exportableAccessToken(from: "user_local::\(jwt)"),
+            "user_local::\(jwt)"
+        )
+        XCTAssertEqual(CursorSessionToken.exportableAccessToken(from: "   "), "")
+        XCTAssertEqual(CursorSessionToken.exportableAccessToken(from: "plain-token"), "plain-token")
+    }
+
     func testNeedsRefreshWhenExpiredOrMissingExp() {
         let expired = Self.makeJWT(sub: "user_exp", exp: 1)
         let fresh = Self.makeJWT(sub: "user_exp", exp: Int(Date().timeIntervalSince1970) + 3_600)
@@ -39,6 +53,7 @@ final class CursorSessionTokenTests: XCTestCase {
           "individualUsage": {
             "plan": {
               "autoPercentUsed": 42.4,
+              "apiPercentUsed": 88.2,
               "totalPercentUsed": 55
             }
           }
@@ -46,15 +61,44 @@ final class CursorSessionTokenTests: XCTestCase {
         """
         let summary = try CursorUsageSummary.parse(from: Data(json.utf8))
         XCTAssertEqual(summary.autoPercentUsed, 42.4)
+        XCTAssertEqual(summary.apiPercentUsed, 88.2)
         XCTAssertEqual(summary.membershipType, "pro")
+        XCTAssertEqual(summary.billingCycleEnd, Date(timeIntervalSince1970: 1_788_220_800))
+        XCTAssertEqual(
+            CursorUsageSummary.billingCycleEndText(
+                from: Date(timeIntervalSince1970: 1_788_220_800),
+                now: Date(timeIntervalSince1970: 1_780_000_000)
+            )?.hasPrefix("到期 "),
+            true
+        )
+        XCTAssertEqual(
+            CursorUsageSummary.billingCycleEndText(
+                from: Date(timeIntervalSince1970: 1),
+                now: Date(timeIntervalSince1970: 2)
+            ),
+            "已到期"
+        )
         XCTAssertEqual(CursorUsageSummary.displayPercent(from: 42.4), 42)
         XCTAssertEqual(CursorUsageSummary.displayPercent(from: 0.4), 1)
+        XCTAssertEqual(CursorUsageSummary.membershipDisplayName(from: "pro"), "pro")
+        XCTAssertEqual(CursorUsageSummary.membershipDisplayName(from: "ultra"), "ultra")
+        XCTAssertEqual(CursorUsageSummary.membershipDisplayName(from: "pro_plus"), "pro_plus")
+        XCTAssertEqual(CursorUsageSummary.membershipDisplayName(from: "hobby"), "hobby")
+        XCTAssertEqual(CursorUsageSummary.membershipDisplayName(from: "enterprise"), "Team")
+        XCTAssertEqual(CursorUsageSummary.membershipColorHex(from: "hobby"), "#94A3B8")
+        XCTAssertEqual(CursorUsageSummary.membershipColorHex(from: "pro"), "#38BDF8")
+        XCTAssertEqual(CursorUsageSummary.membershipColorHex(from: "pro_plus"), "#34D399")
+        XCTAssertEqual(CursorUsageSummary.membershipColorHex(from: "ultra"), "#FBBF24")
+        XCTAssertEqual(CursorUsageSummary.membershipColorHex(from: "enterprise"), "#A78BFA")
+        XCTAssertNil(CursorUsageSummary.membershipDisplayName(from: "   "))
+        XCTAssertNil(CursorUsageSummary.membershipColorHex(from: "   "))
     }
 
     func testUsageSummaryReadsSnakeCasePlanUsage() throws {
-        let json = #"{"plan_usage":{"auto_percent_used":"88"}}"#
+        let json = #"{"plan_usage":{"auto_percent_used":"88","api_percent_used":"12"}}"#
         let summary = try CursorUsageSummary.parse(from: Data(json.utf8))
         XCTAssertEqual(summary.autoPercentUsed, 88)
+        XCTAssertEqual(summary.apiPercentUsed, 12)
         XCTAssertEqual(CursorUsageSummary.displayPercent(from: 88), 88)
     }
 
@@ -86,6 +130,62 @@ final class CursorSessionTokenTests: XCTestCase {
         let status = try CursorSandUsageStatus.parse(from: Data(#"{"usagePercent":10,"hasNonZeroIncludedLimit":false}"#.utf8))
         XCTAssertFalse(status.shouldShowRing)
     }
+
+    func testTeamExtractionReadsAutoAndGrokPercentsFromFirstResult() throws {
+        let snapshot = try CursorTeamExtractionUsage.parse(from: Data(Self.teamExtractionJSON.utf8))
+        XCTAssertEqual(snapshot.email, "robertflynn8702@outlook.com")
+        XCTAssertEqual(snapshot.membershipType, "enterprise")
+        XCTAssertEqual(snapshot.autoPercentUsed, 18.3832)
+        XCTAssertEqual(snapshot.sandPercentUsed, 4.327936)
+        XCTAssertTrue(snapshot.sandHasAllowance)
+        XCTAssertEqual(snapshot.sandPlanLabel, "Grok Bot Plan")
+        XCTAssertEqual(snapshot.sandResetAt, Date(timeIntervalSince1970: 1_789_133_481.656))
+        XCTAssertEqual(CursorUsageSummary.displayPercent(from: 18.3832), 18)
+        XCTAssertEqual(CursorUsageSummary.displayPercent(from: 4.327936), 4)
+    }
+
+    func testTeamExtractionRejectsEmptyResults() {
+        XCTAssertThrowsError(try CursorTeamExtractionUsage.parse(from: Data(#"{"ok":true,"results":[]}"#.utf8)))
+    }
+
+    static let teamExtractionJSON = """
+        {
+            "ok": true,
+            "checkedAt": "2026-09-07T11:21:24.335Z",
+            "skipped": 0,
+            "results": [
+                {
+                    "accountId": 9058,
+                    "email": "robertflynn8702@outlook.com",
+                    "tier": "bot_premium",
+                    "health": "ok",
+                    "membershipType": "enterprise",
+                    "currency": "usd",
+                    "cursorModels": {
+                        "limitCents": 125000,
+                        "usedCents": 22979,
+                        "remainingCents": 102021,
+                        "usedPercent": 18.3832,
+                        "remainingPercent": 81.6168
+                    },
+                    "otherModels": {
+                        "limitCents": 20000,
+                        "usedCents": 20000,
+                        "remainingCents": 0,
+                        "usedPercent": 100,
+                        "remainingPercent": 0
+                    },
+                    "grokBot": {
+                        "usedPercent": 4.327936,
+                        "remainingPercent": 95.672064,
+                        "resetAt": "2026-09-11T13:31:21.656Z",
+                        "planLabel": "Grok Bot Plan",
+                        "hasAllowance": true
+                    }
+                }
+            ]
+        }
+        """
 
     static func makeJWT(sub: String, exp: Int) -> String {
         func encode(_ object: [String: Any]) -> String {
@@ -180,6 +280,27 @@ final class CursorAPIClientTests: XCTestCase {
         XCTAssertEqual(loader.requests[0].value(forHTTPHeaderField: "Authorization"), "Bearer \(jwt)")
     }
 
+    func testTeamExtractionRequestPostsCardSessionCookie() async throws {
+        let loader = RequestRecordingLoader()
+        loader.responses = [
+            .init(statusCode: 200, body: CursorSessionTokenTests.teamExtractionJSON),
+        ]
+        let client = CursorAPIClient(requestLoader: loader)
+
+        let snapshot = try await client.fetchTeamExtractionUsage(cardSession: "  SWdz2qvYhB17kGqBc26QP1iHZBmofumvIBEtciGW2TM  ")
+
+        XCTAssertEqual(snapshot.autoPercentUsed, 18.3832)
+        XCTAssertEqual(snapshot.sandPercentUsed, 4.327936)
+        XCTAssertEqual(loader.requests[0].url, CursorAPIClient.teamExtractionUsageURL)
+        XCTAssertEqual(loader.requests[0].httpMethod, "POST")
+        XCTAssertEqual(
+            loader.requests[0].value(forHTTPHeaderField: "Cookie"),
+            "card_session=SWdz2qvYhB17kGqBc26QP1iHZBmofumvIBEtciGW2TM"
+        )
+        XCTAssertEqual(loader.requests[0].value(forHTTPHeaderField: "User-Agent"), CursorAPIClient.browserUserAgent)
+        XCTAssertEqual(loader.requests[0].value(forHTTPHeaderField: "Accept"), "application/json")
+    }
+
     func testUnauthorizedUsageMapsToAuthorizationFailure() async {
         let jwt = CursorSessionTokenTests.makeJWT(sub: "user_unauth", exp: 1_800_000_000)
         let loader = RequestRecordingLoader()
@@ -214,7 +335,21 @@ final class CursorUsageMonitorTests: XCTestCase {
         XCTAssertEqual(second.accounts[0].ringColorHex, "#FF3B30")
         XCTAssertEqual(second.accounts[0].symbolName, "star.fill")
         XCTAssertTrue(second.accounts[0].showsInMenuBar)
+        XCTAssertEqual(second.accounts[0].kind, .personal)
         XCTAssertEqual(second.selectedAccountID, id)
+    }
+
+    func testPersistsTeamAccountKindAndCardSession() {
+        let defaults = UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!
+        let first = CursorUsageMonitor(userDefaults: defaults, client: CursorAPIClient(requestLoader: RequestRecordingLoader()), timerFactory: ManualTimerFactory())
+        let id = first.addAccount()
+        first.updateAccountKind(id: id, kind: .team)
+        first.updateAccount(id: id, accessToken: "  team-card-session  ", refreshToken: "ignored")
+
+        let second = CursorUsageMonitor(userDefaults: defaults, client: CursorAPIClient(requestLoader: RequestRecordingLoader()), timerFactory: ManualTimerFactory())
+        XCTAssertEqual(second.accounts[0].kind, .team)
+        XCTAssertEqual(second.accounts[0].accessToken, "team-card-session")
+        XCTAssertEqual(second.accounts[0].refreshToken, "")
     }
 
     func testMenuBarCanShowMultipleAccountColumnsWithDistinctColors() {
@@ -238,7 +373,7 @@ final class CursorUsageMonitorTests: XCTestCase {
         let jwt = CursorSessionTokenTests.makeJWT(sub: "user_refresh", exp: Int(Date().timeIntervalSince1970) + 3_600)
         let loader = RequestRecordingLoader()
         loader.responses = [
-            .init(statusCode: 200, body: #"{"individualUsage":{"plan":{"autoPercentUsed":67.6}}}"#),
+            .init(statusCode: 200, body: #"{"membershipType":"ultra","billingCycleEnd":"2026-09-01T00:00:00.000Z","individualUsage":{"plan":{"autoPercentUsed":67.6,"apiPercentUsed":91.2}}}"#),
             .init(statusCode: 200, body: #"{"email":"cursor@example.com"}"#),
             .init(
                 statusCode: 200,
@@ -262,6 +397,10 @@ final class CursorUsageMonitorTests: XCTestCase {
         XCTAssertTrue(monitor.menuBarKeyRows[0].name.hasSuffix("Auto"))
         XCTAssertTrue(monitor.menuBarKeyRows[1].name.hasSuffix("Grok"))
         XCTAssertEqual(monitor.selectedAccount?.email, "cursor@example.com")
+        XCTAssertEqual(monitor.selectedAccount?.membershipType, "ultra")
+        XCTAssertEqual(monitor.selectedAccount?.membershipDisplayName, "ultra")
+        XCTAssertEqual(monitor.selectedAccount?.apiUsageText, "91%")
+        XCTAssertEqual(monitor.selectedAccount?.billingCycleEnd, Date(timeIntervalSince1970: 1_788_220_800))
         XCTAssertEqual(monitor.selectedAccount?.sandUsageText, "27%")
         XCTAssertNil(monitor.selectedAccount?.lastError)
         XCTAssertEqual(loader.requests.count, 3)
@@ -333,6 +472,57 @@ final class CursorUsageMonitorTests: XCTestCase {
         monitor.deleteAccount(id: second)
         XCTAssertNil(monitor.selectedAccountID)
         XCTAssertEqual(monitor.menuBarKeyRows, [])
+    }
+
+    func testTeamAccountRefreshMapsExtractionUsageToAutoAndGrok() async {
+        let loader = RequestRecordingLoader()
+        loader.responses = [
+            .init(statusCode: 200, body: CursorSessionTokenTests.teamExtractionJSON),
+        ]
+        let monitor = CursorUsageMonitor(
+            userDefaults: UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!,
+            client: CursorAPIClient(requestLoader: loader),
+            timerFactory: ManualTimerFactory()
+        )
+        let id = monitor.addAccount()
+        monitor.updateAccountKind(id: id, kind: .team)
+        monitor.updateAccount(id: id, accessToken: "team-card-session", refreshToken: "")
+
+        await monitor.refreshAccount(id: id)
+
+        XCTAssertEqual(monitor.selectedAutoUsageText, "18%")
+        XCTAssertEqual(monitor.menuBarKeyRows.map(\.text), ["18%", "4%"])
+        XCTAssertEqual(monitor.menuBarKeyRows.map(\.id), ["\(id)-auto", "\(id)-sand"])
+        XCTAssertTrue(monitor.menuBarKeyRows[0].name.hasSuffix("Auto"))
+        XCTAssertTrue(monitor.menuBarKeyRows[1].name.hasSuffix("Grok"))
+        XCTAssertEqual(monitor.selectedAccount?.email, "robertflynn8702@outlook.com")
+        XCTAssertEqual(monitor.selectedAccount?.membershipType, "enterprise")
+        XCTAssertEqual(monitor.selectedAccount?.membershipDisplayName, "Team")
+        XCTAssertEqual(monitor.selectedAccount?.sandUsageText, "4%")
+        XCTAssertNil(monitor.selectedAccount?.lastError)
+        XCTAssertEqual(loader.requests.count, 1)
+        XCTAssertEqual(loader.requests[0].url, CursorAPIClient.teamExtractionUsageURL)
+        XCTAssertEqual(loader.requests[0].httpMethod, "POST")
+        XCTAssertEqual(
+            loader.requests[0].value(forHTTPHeaderField: "Cookie"),
+            "card_session=team-card-session"
+        )
+    }
+
+    func testTeamAccountRefreshRequiresCardSession() async {
+        let loader = RequestRecordingLoader()
+        let monitor = CursorUsageMonitor(
+            userDefaults: UserDefaults(suiteName: "UsageMonitorTests.\(UUID().uuidString)")!,
+            client: CursorAPIClient(requestLoader: loader),
+            timerFactory: ManualTimerFactory()
+        )
+        let id = monitor.addAccount()
+        monitor.updateAccountKind(id: id, kind: .team)
+
+        await monitor.refreshAccount(id: id)
+
+        XCTAssertEqual(monitor.selectedAccount?.lastError, "请先粘贴 Card Session")
+        XCTAssertTrue(loader.requests.isEmpty)
     }
 
     func testSandUsageFailureLeavesAutoRingIntact() async {
