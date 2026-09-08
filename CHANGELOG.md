@@ -2,6 +2,18 @@
 
 All notable changes to 用量监控 are documented here.
 
+## [0.0.8] — 2026-09-08
+
+### Added
+
+- **Cursor 用量** — 设置里可添加 Cursor 账号，菜单栏和弹层显示 Auto、API 和 Grok 用量。
+- **Cursor Team** — Team 账号只需填写 Card Session，后台走独立接口，展示与个人账号相同。
+- **Bark 通知** — 服务状态变化可通过 Bark 推送，支持自定义标题、分组和图标。
+
+### Fixed
+
+- **安全输入框** — 粘贴 Card Session 或 Token 后立刻显示完整掩码，不再只出现两个圆点。
+
 ## [2.0.0] — 2026-05-09
 
 ### Changed
